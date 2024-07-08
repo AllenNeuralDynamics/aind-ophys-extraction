@@ -136,7 +136,7 @@ def write_output_metadata(
                     start_date_time=start_date_time,
                     end_date_time=dt.now(tz.utc),
                     input_location=str(input_fp),
-                    output_location=output_fp,
+                    output_location=str(output_fp),
                     code_url=(os.getenv("EXTRACTION_URL")),
                     parameters=metadata,
                 )
