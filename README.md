@@ -1,3 +1,3 @@
-# aind-capsule-template
+# aind-ophys-extraction-suite2p
 
-Basic structure of a capsule to be customized as needed.
+This capsule combines cellpose and suite2p to extract sources, i.e. ROIs and their traces.
