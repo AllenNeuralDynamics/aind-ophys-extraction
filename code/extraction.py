@@ -146,6 +146,73 @@ def write_output_metadata(
     )
     prev_processing.write_standard_file(output_directory=Path(output_fp).parent)
 
+def create_virtual_dataset(h5_file: Path, frame_locations: list, frames_length: int, temp_dir: Path) -> Path:
+    """Creates a virtual dataset from a list of frame locations
+    
+    Parameters
+    ----------
+    h5_file: Path
+        path to h5 file
+    frame_locations: list
+        list of frame locations
+    frames_length: int
+        sum of frame locations
+    temp_dir: Path
+        temporary directory for virtual dataset
+        
+    Returns
+    -------
+    h5_file: Path
+        path to virtual dataset
+    """
+    with h5py.File(h5_file, "r") as f:
+        data_shape = f["data"].shape
+        dtype = f["data"].dtype
+        vsource = h5py.VirtualSource(f["data"])
+        layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
+        start = 0
+        for loc in frame_locations:
+            layout[start : start + loc[1] - loc[0] + 1] = vsource[loc[0] : loc[1] + 1]
+            start += loc[1] - loc[0] + 1
+        h5_file = temp_dir / h5_file.name
+        with h5py.File(h5_file, "w") as f:
+            f.create_virtual_dataset("data", layout)
+        
+    return h5_file
+
+
+def bergamo_segmentation(
+    motion_corr_fp: Path, session: dict, temp_dir: Path
+) -> str:
+    """Performs singleplane motion correction on a singleplane data set
+
+    Parameters
+    ----------
+    motion_corr_fp: Path
+        path to data directory
+    session: dict
+        session information
+    temp_dir: Path
+        temporary directory for virtual dataset
+    Returns
+    -------
+    h5_file: str
+        path to motion corrected h5 file
+    """
+    motion_dir = motion_corr_fp.parent
+    tiff_stem_locs = next(motion_dir.glob("tiff_stem_locations.json"))
+    with open(tiff_stem_locs, "r") as j:
+        tiff_stem_locations = json.load(j)
+    valid_epoch_stems = [
+        i["output_parameters"]["tiff_stem"]
+        for i in session["stimulus_epochs"]
+        if i["stimulus_name"] != "2p photostimulation"
+    ]
+    frame_locations = [tiff_stem_locations[i] for i in valid_epoch_stems]
+    frames_length = sum([(i[1] - i[0] + 1) for i in frame_locations])
+    
+    return create_virtual_dataset(motion_corr_fp, frame_locations, frames_length, temp_dir)
+
 
 if __name__ == "__main__":
     start_time = dt.now(tz.utc)
@@ -191,13 +258,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
-    if len(list(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))):
+    temp_dir = Path(args.temp_dir).resolve()
+    session_fp = next(input_dir.rglob("session.json"))
+    with open(session_fp, "r") as j:
+        session = json.load(j)
+    data_des_fp = next(input_dir.rglob("data_description.json"))
+    with open(data_des_fp, "r") as j:
+        data_description = json.load(j)
+    unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+    try:
         motion_corrected_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
-    else:
+    except:
         motion_corrected_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
-    experiment_id = motion_corrected_fn.parent.parent.name
-    output_dir = make_output_directory(output_dir, experiment_id)
-    process_json = motion_corrected_fn.parent / "processing.json"
+    process_json = os.path.join(motion_corrected_fn.parent / "processing.json")
+    parent_directory = Path(process_json).parent
+    if "Bergamo" in session["rig_id"]:
+        motion_corrected_fn = bergamo_segmentation(
+            motion_corrected_fn, session, temp_dir=temp_dir
+        )
+    output_dir = make_output_directory(output_dir, unique_id)
     with open(process_json, "r") as j:
         data = json.load(j)
     if data.get("processing_pipeline") is not None:
