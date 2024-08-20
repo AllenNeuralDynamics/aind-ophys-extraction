@@ -231,6 +231,12 @@ if __name__ == "__main__":
         "-o", "--output-dir", type=str, help="Output directory", default="../results/"
     )
     parser.add_argument(
+        "--temp-dir",
+        type=str,
+        help="Temporary directory for vset",
+        default="../scratch/",
+    )
+    parser.add_argument(
         "--denoise",
         action="store_true",
         help="Whether to denoise the movie before running Suite2P",
@@ -385,7 +391,7 @@ if __name__ == "__main__":
 
     write_output_metadata(
         vars(args),
-        str(motion_corrected_fn.parent),
+        str(parent_directory),
         ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION,
         motion_corrected_fn,
         output_dir / "extraction.h5",
