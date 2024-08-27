@@ -250,7 +250,6 @@ if __name__ == "__main__":
         pass
 
     # load in the rois from the stat file and movie path for shape
-    logger.info("Loading suite2p ROIs and video size.")
     with h5py.File(str(motion_corrected_fn), "r") as open_vid:
         dims = open_vid["data"][0].shape
     if len(list(Path(args.tmp_dir).glob("**/stat.npy"))):
@@ -270,6 +269,7 @@ if __name__ == "__main__":
         # convert ROIs to sparse COO 3D-tensor a la https://sparse.pydata.org/en/stable/construct.html
         data = []
         coords = []
+        neuropil_coords = []
         for i, roi in enumerate(suite2p_stats):
             data.append(roi["lam"])
             coords.append(
@@ -278,15 +278,35 @@ if __name__ == "__main__":
                     dtype=np.int16,
                 )
             )
+            neuropil_coords.append(
+                np.array(
+                    [
+                        i * np.ones(len(roi["neuropil_mask"])),
+                        roi["neuropil_mask"] // dims[1],
+                        roi["neuropil_mask"] % dims[1],
+                    ],
+                    dtype=np.int16,
+                )
+            )
+        keys = list(suite2p_stats[0].keys())
+        for k in ("ypix", "xpix", "lam", "neuropil_mask"):
+            keys.remove(k)
+        rois = {}
+        for k in keys:
+            rois[k] = [roi[k] for roi in suite2p_stats]
         data = np.concatenate(data)
         coords = np.hstack(coords)
+        neuropil_coords = np.hstack(neuropil_coords)
+        rois["soma_crop"] = np.concatenate(rois["soma_crop"])
+        rois["overlap"] = np.concatenate(rois["overlap"])
     else:  # no ROIs found
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
         ] * 3
-        r_values, data, coords = [[]] * 3
+        r_values, data, coords, neuropil_coords = [[]] * 4
         if not args.use_suite2p_neuropil:
             raw_r = []
+        keys = []
 
     # write output files
     with h5py.File(output_dir / "extraction.h5", "w") as f:
@@ -298,6 +318,12 @@ if __name__ == "__main__":
         f.create_dataset(
             "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
         )  # neurons x height x width
+        for k in keys:
+            dtype = np.array(rois[k]).dtype
+            if dtype != "bool":
+                dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
+            f.create_dataset(f"rois/{k}", data=rois[k], dtype=dtype)
+        f.create_dataset(f"neuropil_coords", data=neuropil_coords, compression="gzip")
         f.create_dataset(f"neuropil_rcoef", data=r_values)
         # We save the raw r values if we are not using the suite2p neuropil.
         # This is useful for debugging purposes.
