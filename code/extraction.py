@@ -259,6 +259,7 @@ if __name__ == "__main__":
         suite2p_fneu_path = str(next(Path(args.tmp_dir).glob("**/Fneu.npy")))
         traces_roi = np.load(suite2p_f_path, allow_pickle=True)
         traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
+        iscell = np.load(str(next(Path(args.tmp_dir).glob("**/iscell.npy"))))
         if args.use_suite2p_neuropil:
             traces_corrected = traces_roi - suite2p_args["neucoeff"] * traces_neuropil
             r_values = suite2p_args["neucoeff"] * np.ones(traces_roi.shape[0])
@@ -303,7 +304,7 @@ if __name__ == "__main__":
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
         ] * 3
-        r_values, data, coords, neuropil_coords = [[]] * 4
+        r_values, data, coords, neuropil_coords, iscell = [[]] * 5
         if not args.use_suite2p_neuropil:
             raw_r = []
         keys = []
@@ -323,6 +324,7 @@ if __name__ == "__main__":
             if dtype != "bool":
                 dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
             f.create_dataset(f"rois/{k}", data=rois[k], dtype=dtype)
+        f.create_dataset(f"iscell", data=iscell.astype("f4"))
         f.create_dataset(f"neuropil_coords", data=neuropil_coords, compression="gzip")
         f.create_dataset(f"neuropil_rcoef", data=r_values)
         # We save the raw r values if we are not using the suite2p neuropil.
