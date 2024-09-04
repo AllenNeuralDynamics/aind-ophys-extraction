@@ -5,7 +5,7 @@ import os
 from datetime import datetime as dt
 from datetime import timezone as tz
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple
 
 import h5py
 import numpy as np
@@ -146,7 +146,12 @@ def write_output_metadata(
     )
     prev_processing.write_standard_file(output_directory=Path(output_fp).parent)
 
-def create_virtual_dataset(h5_file: Path, frame_locations: list, frames_length: int, temp_dir: Path) -> Path:
+def create_virtual_dataset(
+        h5_file: Path, 
+        frame_locations: list, 
+        frames_length: int, 
+        temp_dir: Path
+        ) -> Path:
     """Creates a virtual dataset from a list of frame locations
     
     Parameters
@@ -213,6 +218,54 @@ def bergamo_segmentation(
     
     return create_virtual_dataset(motion_corr_fp, frame_locations, frames_length, temp_dir)
 
+def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
+    """Get the session and data description metadata from the input directory
+    
+    Parameters
+    ----------
+    input_dir: Path
+        input directory
+        
+    Returns
+    -------
+    session: dict
+        session metadata
+    data_description: dict
+        data description metadata
+    processing: dict
+
+    """
+    session_fp = next(input_dir.rglob("session.json"))
+    data_des_fp = next(input_dir.rglob("data_description.json"))
+    process_fp = next(input_dir.rglob("*/processing.json"))
+    with open(session_fp, "r") as j:
+        session = json.load(j)
+    
+    with open(data_des_fp, "r") as j:
+        data_description = json.load(j)
+    with open(process_fp, "r") as j:
+        processing = json.load(j)
+    
+    return session, data_description, processing
+
+def get_frame_rate(processing: dict) -> float:
+    """Get the frame rate from the processing metadata
+    
+    Parameters
+    ----------
+    processing: dict
+        processing metadata
+        
+    Returns
+    -------
+    frame_rate: float
+        frame rate
+    """
+    if processing.get("processing_pipeline") is not None:
+        processing = processing["processing_pipeline"]
+    for data_proc in processing["data_processes"]:
+        if data_proc["parameters"].get("movie_frame_rate_hz", ""):
+            return data_proc["parameters"]["movie_frame_rate_hz"]
 
 if __name__ == "__main__":
     start_time = dt.now(tz.utc)
@@ -265,31 +318,19 @@ if __name__ == "__main__":
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
     temp_dir = Path(args.temp_dir).resolve()
-    session_fp = next(input_dir.rglob("session.json"))
-    with open(session_fp, "r") as j:
-        session = json.load(j)
-    data_des_fp = next(input_dir.rglob("data_description.json"))
-    with open(data_des_fp, "r") as j:
-        data_description = json.load(j)
-    unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
-    try:
+    session, data_description, processing = get_metdata(input_dir)
+    if len(list(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))):
         motion_corrected_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
-    except:
+    else:
         motion_corrected_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
-    process_json = os.path.join(motion_corrected_fn.parent / "processing.json")
-    parent_directory = Path(process_json).parent
     if "Bergamo" in session["rig_id"]:
         motion_corrected_fn = bergamo_segmentation(
             motion_corrected_fn, session, temp_dir=temp_dir
         )
+    frame_rate = get_frame_rate(processing)
+    unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
     output_dir = make_output_directory(output_dir, unique_id)
-    with open(process_json, "r") as j:
-        data = json.load(j)
-    if data.get("processing_pipeline") is not None:
-        data = data["processing_pipeline"]
-    for data_proc in data["data_processes"]:
-        if data_proc["parameters"].get("movie_frame_rate_hz", ""):
-            frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
+    parent_directory = motion_corrected_fn.parent
 
     # Set suite2p args.
     suite2p_args = suite2p.default_ops()
