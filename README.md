@@ -32,7 +32,7 @@ __`cellpose`:__
 - `masks`: Labeled image, where 0=no masks; 1,2,…=mask labels.
 - `flows_in_hsv`: XY flow in HSV 0-255
 - `flows`: XY flows at each pixel
-- `cellprob`: Cell probability
+- `cellprob`: Cell probability at each pixel
 - `final_locations`: Final pixel locations after Euler integration
 - `styles`: Style vector summarizing each image
 
