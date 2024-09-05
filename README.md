@@ -25,9 +25,10 @@ __`traces`:__
 - `std`: Standard deviation of neuropil-corrected fluorescence traces
 
 __`rois`:__
-- `data`: Values of the weighted rois
+- `data`: Values of the (weighted) ROIs
 - `coords`: Index locations of every `data` value
 - `shape`: Shape of the ROI array, # neurons x height of FOV (in pixels) x width of FOV (in pixels)
+- `neuropil_coords`: Index locations of neuropil masks
 - `aspect_ratio`, `compact`, `footprint`, `med`, `mrs`, `mrs0`, `npix`, `npix_norm`, `npix_norm_no_crop`, `npix_soma`, `overlap`, `radius`, `solidity`, `soma_crop`: Additional ROI stats, see suite2p documentation
 
 __`cellpose`:__
@@ -38,7 +39,5 @@ __`cellpose`:__
 - `final_locations`: Final pixel locations after Euler integration
 - `styles`: Style vector summarizing each image
 
-Additional datasets at the root of `extraction.h5` are:
-- `iscell`: Specifies whether an ROI is a cell, first column is 0/1, and second column is probability that the ROI is a cell based on the default classifier
-- `neuropil_coords`: Index locations of neuropil masks
-
+An additional dataset at the root of `extraction.h5` is:
+- `iscell`: Specifies whether a ROI is a cell, first column is 0/1, and second column is probability that the ROI is a cell based on the default classifier
