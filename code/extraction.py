@@ -265,7 +265,8 @@ def get_frame_rate(processing: dict) -> float:
         processing = processing["processing_pipeline"]
     for data_proc in processing["data_processes"]:
         if data_proc["parameters"].get("movie_frame_rate_hz", ""):
-            return data_proc["parameters"]["movie_frame_rate_hz"]
+            frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
+    return frame_rate
 
 if __name__ == "__main__":
     start_time = dt.now(tz.utc)
