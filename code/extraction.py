@@ -331,16 +331,16 @@ if __name__ == "__main__":
                 )
             )
         keys = list(suite2p_stats[0].keys())
-        for k in ("ypix", "xpix", "lam", "neuropil_mask", "skew", "std"):
+        for k in ("ypix", "xpix", "lam", "neuropil_mask"):
             keys.remove(k)
-        rois = {}
+        stat = {}
         for k in keys:
-            rois[k] = [roi[k] for roi in suite2p_stats]
+            stat[k] = [s[k] for s in suite2p_stats]
         data = np.concatenate(data)
         coords = np.hstack(coords)
         neuropil_coords = np.hstack(neuropil_coords)
-        rois["soma_crop"] = np.concatenate(rois["soma_crop"])
-        rois["overlap"] = np.concatenate(rois["overlap"])
+        stat["soma_crop"] = np.concatenate(stat["soma_crop"])
+        stat["overlap"] = np.concatenate(stat["overlap"])
     else:  # no ROIs found
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
@@ -365,10 +365,13 @@ if __name__ == "__main__":
             "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
         )  # neurons x height x width
         for k in keys:
-            dtype = np.array(rois[k]).dtype
+            dtype = np.array(stat[k]).dtype
             if dtype != "bool":
                 dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
-            f.create_dataset(f"rois/{k}", data=rois[k], dtype=dtype)
+            if k in ("skew", "std"):
+                f.create_dataset(f"traces/{k}", data=stat[k], dtype=dtype)
+            else:
+                f.create_dataset(f"rois/{k}", data=stat[k], dtype=dtype)
         f.create_dataset(f"iscell", data=iscell, dtype="f4")
         f.create_dataset(f"neuropil_coords", data=neuropil_coords, compression="gzip")
         f.create_dataset(f"neuropil_rcoef", data=r_values)
