@@ -285,34 +285,65 @@ if __name__ == "__main__":
         "-o", "--output-dir", type=str, help="Output directory", default="../results/"
     )
     parser.add_argument(
-        "--temp-dir",
-        type=str,
-        help="Temporary directory for vset",
-        default="../scratch/",
-    )
-    parser.add_argument(
-        "--denoise",
-        action="store_true",
-        help="Whether to denoise the movie before running Suite2P",
-    )
-    parser.add_argument(
-        "-anatomical_only",
-        type=int,
-        default=2,
-        help="Whether to run Suite2P in anatomical only mode (CellPose)",
-    )
-    parser.add_argument(
-        "--use_suite2p_neuropil",
-        action="store_true",
-        help="Whether to use the fix weight provided by suite2p for neuropil \
-        correction. If not, we use a mutual information based methods",
-    )
-    parser.add_argument(
         "--tmp_dir",
         type=str,
         default="/scratch",
         help="Directory into which to write temporary files "
         "produced by Suite2P (default: /scratch)",
+    )
+    parser.add_argument(
+        "--diameter",
+        type=int,
+        default=0,
+        help="Diameter that will be used for cellpose. "
+        "If set to zero, diameter is estimated.",
+    )
+    parser.add_argument(
+        "--anatomical_only",
+        type=int,
+        default=2,
+        help="If greater than 0, specifies what to use Cellpose on. "
+        "1: Will find masks on max projection image divided by mean image "
+        "2: Will find masks on mean image "
+        "3: Will find masks on enhanced mean image "
+        "4: Will find masks on maximum projection image",
+    )
+    parser.add_argument(
+        "--denoise",
+        action="store_true",
+        help="Whether or not binned movie should be denoised before cell detection.",
+    )
+    parser.add_argument(
+        "--cellprob_threshold",
+        type=float,
+        default=0.0,
+        help="Threshold for cell detection that will be used by cellpose.",
+    )
+    parser.add_argument(
+        "--flow_threshold",
+        type=float,
+        default=1.5,
+        help="Flow threshold that will be used by cellpose.",
+    )
+    parser.add_argument(
+        "--spatial_hp_cp",
+        type=int,
+        default=0,
+        help="Window for spatial high-pass filtering of image "
+        "to be used for cellpose.",
+    )
+    parser.add_argument(
+        "--pretrained_model",
+        type=str,
+        default="cyto",
+        help="Path to pretrained model or string for model type "
+        "(can be user’s model).",
+    )
+    parser.add_argument(
+        "--use_suite2p_neuropil",
+        action="store_true",
+        help="Whether to use the fix weight provided by suite2p for neuropil \
+        correction. If not, we use a mutual information based method.",
     )
 
     args = parser.parse_args()
@@ -336,7 +367,12 @@ if __name__ == "__main__":
     # Set suite2p args.
     suite2p_args = suite2p.default_ops()
     # Overwrite the parameters for suite2p that are exposed
+    suite2p_args["diameter"] = args.diameter
     suite2p_args["anatomical_only"] = args.anatomical_only
+    suite2p_args["cellprob_threshold"] = args.cellprob_threshold
+    suite2p_args["flow_threshold"] = args.flow_threshold
+    suite2p_args["spatial_hp_cp"] = args.spatial_hp_cp
+    suite2p_args["pretrained_model"] = args.pretrained_model
     suite2p_args["denoise"] = args.denoise
     suite2p_args["save_path0"] = args.tmp_dir
     # Here we overwrite the parameters for suite2p that will not change in our
@@ -347,7 +383,6 @@ if __name__ == "__main__":
     suite2p_args["roidetect"] = True
     suite2p_args["do_registration"] = 0
     suite2p_args["spikedetect"] = False
-    suite2p_args["diameter"] = 0
     suite2p_args["fs"] = frame_rate
     suite2p_args["neuropil_extract"] = True
 
@@ -377,16 +412,16 @@ if __name__ == "__main__":
         pass
 
     # load in the rois from the stat file and movie path for shape
-    logger.info("Loading suite2p ROIs and video size.")
     with h5py.File(str(motion_corrected_fn), "r") as open_vid:
         dims = open_vid["data"][0].shape
-    if len(list(Path(args.tmp_dir).glob("**/stat.npy"))):
-        suite2p_stat_path = str(next(Path(args.tmp_dir).glob("**/stat.npy")))
+    if len(list(Path(args.tmp_dir).rglob("stat.npy"))):
+        suite2p_stat_path = str(next(Path(args.tmp_dir).rglob("stat.npy")))
         suite2p_stats = np.load(suite2p_stat_path, allow_pickle=True)
-        suite2p_f_path = str(next(Path(args.tmp_dir).glob("**/F.npy")))
-        suite2p_fneu_path = str(next(Path(args.tmp_dir).glob("**/Fneu.npy")))
+        suite2p_f_path = str(next(Path(args.tmp_dir).rglob("F.npy")))
+        suite2p_fneu_path = str(next(Path(args.tmp_dir).rglob("Fneu.npy")))
         traces_roi = np.load(suite2p_f_path, allow_pickle=True)
         traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
+        iscell = np.load(str(next(Path(args.tmp_dir).rglob("iscell.npy"))))
         if args.use_suite2p_neuropil:
             traces_corrected = traces_roi - suite2p_args["neucoeff"] * traces_neuropil
             r_values = suite2p_args["neucoeff"] * np.ones(traces_roi.shape[0])
@@ -397,6 +432,7 @@ if __name__ == "__main__":
         # convert ROIs to sparse COO 3D-tensor a la https://sparse.pydata.org/en/stable/construct.html
         data = []
         coords = []
+        neuropil_coords = []
         for i, roi in enumerate(suite2p_stats):
             data.append(roi["lam"])
             coords.append(
@@ -405,15 +441,35 @@ if __name__ == "__main__":
                     dtype=np.int16,
                 )
             )
+            neuropil_coords.append(
+                np.array(
+                    [
+                        i * np.ones(len(roi["neuropil_mask"])),
+                        roi["neuropil_mask"] // dims[1],
+                        roi["neuropil_mask"] % dims[1],
+                    ],
+                    dtype=np.int16,
+                )
+            )
+        keys = list(suite2p_stats[0].keys())
+        for k in ("ypix", "xpix", "lam", "neuropil_mask"):
+            keys.remove(k)
+        rois = {}
+        for k in keys:
+            rois[k] = [roi[k] for roi in suite2p_stats]
         data = np.concatenate(data)
         coords = np.hstack(coords)
+        neuropil_coords = np.hstack(neuropil_coords)
+        rois["soma_crop"] = np.concatenate(rois["soma_crop"])
+        rois["overlap"] = np.concatenate(rois["overlap"])
     else:  # no ROIs found
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
         ] * 3
-        r_values, data, coords = [[]] * 3
+        r_values, data, coords, neuropil_coords, iscell = [[]] * 5
         if not args.use_suite2p_neuropil:
             raw_r = []
+        keys = []
 
     # write output files
     with h5py.File(output_dir / "extraction.h5", "w") as f:
@@ -425,6 +481,13 @@ if __name__ == "__main__":
         f.create_dataset(
             "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
         )  # neurons x height x width
+        for k in keys:
+            dtype = np.array(rois[k]).dtype
+            if dtype != "bool":
+                dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
+            f.create_dataset(f"rois/{k}", data=rois[k], dtype=dtype)
+        f.create_dataset(f"iscell", data=iscell, dtype="f4")
+        f.create_dataset(f"neuropil_coords", data=neuropil_coords, compression="gzip")
         f.create_dataset(f"neuropil_rcoef", data=r_values)
         # We save the raw r values if we are not using the suite2p neuropil.
         # This is useful for debugging purposes.
