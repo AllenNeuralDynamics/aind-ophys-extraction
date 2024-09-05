@@ -350,8 +350,12 @@ if __name__ == "__main__":
             raw_r = []
         keys = []
 
+    cellpose_path = str(next(Path(args.tmp_dir).glob("**/cellpose.npz")))
     # write output files
-    with h5py.File(output_dir / "extraction.h5", "w") as f:
+    with (
+        h5py.File(output_dir / "extraction.h5", "w") as f,
+        np.load(cellpose_path) as cp,
+    ):
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
         f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
         f.create_dataset("traces/roi", data=traces_roi, compression="gzip")
@@ -372,6 +376,8 @@ if __name__ == "__main__":
         # This is useful for debugging purposes.
         if not args.use_suite2p_neuropil:
             f.create_dataset("raw_neuropil_rcoef_mutualinfo", data=raw_r)
+        for k in cp.keys():
+            f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
 
     write_output_metadata(
         vars(args),
