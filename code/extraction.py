@@ -266,6 +266,8 @@ def get_frame_rate(processing: dict) -> float:
     for data_proc in processing["data_processes"]:
         if data_proc["parameters"].get("movie_frame_rate_hz", ""):
             frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
+        else:
+            raise ValueError("Frame rate not found in processing metadata")
     return frame_rate
 
 if __name__ == "__main__":
