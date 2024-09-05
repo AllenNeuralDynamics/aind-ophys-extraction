@@ -331,7 +331,7 @@ if __name__ == "__main__":
                 )
             )
         keys = list(suite2p_stats[0].keys())
-        for k in ("ypix", "xpix", "lam", "neuropil_mask"):
+        for k in ("ypix", "xpix", "lam", "neuropil_mask", "skew", "std"):
             keys.remove(k)
         rois = {}
         for k in keys:
