@@ -359,11 +359,17 @@ if __name__ == "__main__":
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
         f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
         f.create_dataset("traces/roi", data=traces_roi, compression="gzip")
+        f.create_dataset("traces/neuropil_rcoef", data=r_values)
+        # We save the raw r values if we are not using the suite2p neuropil.
+        # This is useful for debugging purposes.
+        if not args.use_suite2p_neuropil:
+            f.create_dataset("traces/raw_neuropil_rcoef_mutualinfo", data=raw_r)
         f.create_dataset("rois/coords", data=coords, compression="gzip")
         f.create_dataset("rois/data", data=data, compression="gzip")
         f.create_dataset(
             "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
         )  # neurons x height x width
+        f.create_dataset("rois/neuropil_coords", data=neuropil_coords, compression="gzip")
         for k in keys:
             dtype = np.array(stat[k]).dtype
             if dtype != "bool":
@@ -373,12 +379,6 @@ if __name__ == "__main__":
             else:
                 f.create_dataset(f"rois/{k}", data=stat[k], dtype=dtype)
         f.create_dataset(f"iscell", data=iscell, dtype="f4")
-        f.create_dataset(f"neuropil_coords", data=neuropil_coords, compression="gzip")
-        f.create_dataset(f"neuropil_rcoef", data=r_values)
-        # We save the raw r values if we are not using the suite2p neuropil.
-        # This is useful for debugging purposes.
-        if not args.use_suite2p_neuropil:
-            f.create_dataset("raw_neuropil_rcoef_mutualinfo", data=raw_r)
         for k in cp.keys():
             f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
 

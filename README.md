@@ -19,6 +19,8 @@ __`traces`:__
 - `corrected`: Neuropil-corrected fluorescence traces
 - `roi`: Neuropil-corrupted raw fluorescence traces of each ROI
 - `neuropil`: Neuropil fluorescence traces
+- `neuropil_rcoef`: Coefficients used for neuropil correction
+- `raw_neuropil_rcoef_mutualinfo`: Raw coefficients for neuropil correction (minimizing mutual information between corrected and neuropil trace)
 - `skew`: Skewness of neuropil-corrected fluorescence traces
 - `std`: Standard deviation of neuropil-corrected fluorescence traces
 
@@ -39,5 +41,4 @@ __`cellpose`:__
 Additional datasets at the root of `extraction.h5` are:
 - `iscell`: Specifies whether an ROI is a cell, first column is 0/1, and second column is probability that the ROI is a cell based on the default classifier
 - `neuropil_coords`: Index locations of neuropil masks
-- `neuropil_rcoef`: Coefficients used for neuropil correction
-- `raw_neuropil_rcoef_mutualinfo`: Raw coefficients for neuropil correction (minimizing mutual information between corrected and neuropil trace)
+
