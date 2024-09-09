@@ -465,14 +465,14 @@ if __name__ == "__main__":
         keys = list(suite2p_stats[0].keys())
         for k in ("ypix", "xpix", "lam", "neuropil_mask"):
             keys.remove(k)
-        rois = {}
+        stat = {}
         for k in keys:
-            rois[k] = [roi[k] for roi in suite2p_stats]
+            stat[k] = [s[k] for s in suite2p_stats]
         data = np.concatenate(data)
         coords = np.hstack(coords)
         neuropil_coords = np.hstack(neuropil_coords)
-        rois["soma_crop"] = np.concatenate(rois["soma_crop"])
-        rois["overlap"] = np.concatenate(rois["overlap"])
+        stat["soma_crop"] = np.concatenate(stat["soma_crop"])
+        stat["overlap"] = np.concatenate(stat["overlap"])
     else:  # no ROIs found
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
@@ -482,28 +482,41 @@ if __name__ == "__main__":
             raw_r = []
         keys = []
 
+    cellpose_path = str(next(Path(args.tmp_dir).glob("**/cellpose.npz")))
     # write output files
-    with h5py.File(output_dir / "extraction.h5", "w") as f:
+    with (
+        h5py.File(output_dir / "extraction.h5", "w") as f,
+        np.load(cellpose_path) as cp,
+    ):
+        # traces
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
         f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
         f.create_dataset("traces/roi", data=traces_roi, compression="gzip")
+        f.create_dataset("traces/neuropil_rcoef", data=r_values)
+        if not args.use_suite2p_neuropil:
+            # We save the raw r values if we are not using the suite2p neuropil.
+            # This is useful for debugging purposes.
+            f.create_dataset("traces/raw_neuropil_rcoef_mutualinfo", data=raw_r)
+        for k in keys:
+            dtype = np.array(stat[k]).dtype
+            if dtype != "bool":
+                dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
+            if k in ("skew", "std"):
+                f.create_dataset(f"traces/{k}", data=stat[k], dtype=dtype)
+        # ROIs
+            else:
+                f.create_dataset(f"rois/{k}", data=stat[k], dtype=dtype)
         f.create_dataset("rois/coords", data=coords, compression="gzip")
         f.create_dataset("rois/data", data=data, compression="gzip")
         f.create_dataset(
             "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
         )  # neurons x height x width
-        for k in keys:
-            dtype = np.array(rois[k]).dtype
-            if dtype != "bool":
-                dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
-            f.create_dataset(f"rois/{k}", data=rois[k], dtype=dtype)
+        f.create_dataset("rois/neuropil_coords", data=neuropil_coords, compression="gzip")
+        # cellpose
+        for k in cp.keys():
+            f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
+        # classifier
         f.create_dataset(f"iscell", data=iscell, dtype="f4")
-        f.create_dataset(f"neuropil_coords", data=neuropil_coords, compression="gzip")
-        f.create_dataset(f"neuropil_rcoef", data=r_values)
-        # We save the raw r values if we are not using the suite2p neuropil.
-        # This is useful for debugging purposes.
-        if not args.use_suite2p_neuropil:
-            f.create_dataset("raw_neuropil_rcoef_mutualinfo", data=raw_r)
 
     write_output_metadata(
         vars(args),

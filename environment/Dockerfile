@@ -13,7 +13,9 @@ RUN pip3 install -U --no-cache-dir \
 
 RUN pip3 install -U --no-cache-dir \
     aind-data-schema==0.22.0 \
-    cellpose==2.1.0 \
+    cellpose \
+    h5py \
+    pydantic==2.8.2 \
     sbxreader \
     scikit-image \
-    suite2p==0.10.2
+    git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output
