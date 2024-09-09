@@ -146,14 +146,12 @@ def write_output_metadata(
     )
     prev_processing.write_standard_file(output_directory=Path(output_fp).parent)
 
+
 def create_virtual_dataset(
-        h5_file: Path, 
-        frame_locations: list, 
-        frames_length: int, 
-        temp_dir: Path
-        ) -> Path:
+    h5_file: Path, frame_locations: list, frames_length: int, temp_dir: Path
+) -> Path:
     """Creates a virtual dataset from a list of frame locations
-    
+
     Parameters
     ----------
     h5_file: Path
@@ -164,7 +162,7 @@ def create_virtual_dataset(
         sum of frame locations
     temp_dir: Path
         temporary directory for virtual dataset
-        
+
     Returns
     -------
     h5_file: Path
@@ -182,13 +180,11 @@ def create_virtual_dataset(
         h5_file = temp_dir / h5_file.name
         with h5py.File(h5_file, "w") as f:
             f.create_virtual_dataset("data", layout)
-        
+
     return h5_file
 
 
-def bergamo_segmentation(
-    motion_corr_fp: Path, session: dict, temp_dir: Path
-) -> str:
+def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> str:
     """Performs singleplane motion correction on a singleplane data set
 
     Parameters
@@ -215,17 +211,20 @@ def bergamo_segmentation(
     ]
     frame_locations = [tiff_stem_locations[i] for i in valid_epoch_stems]
     frames_length = sum([(i[1] - i[0] + 1) for i in frame_locations])
-    
-    return create_virtual_dataset(motion_corr_fp, frame_locations, frames_length, temp_dir)
+
+    return create_virtual_dataset(
+        motion_corr_fp, frame_locations, frames_length, temp_dir
+    )
+
 
 def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     """Get the session and data description metadata from the input directory
-    
+
     Parameters
     ----------
     input_dir: Path
         input directory
-        
+
     Returns
     -------
     session: dict
@@ -235,27 +234,33 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     processing: dict
 
     """
-    session_fp = next(input_dir.rglob("session.json"))
-    data_des_fp = next(input_dir.rglob("data_description.json"))
+    try:
+        session_fp = next(input_dir.rglob("session.json"))
+        with open(session_fp, "r") as j:
+            session = json.load(j)
+    except StopIteration:
+        session = None
+    try:
+        data_des_fp = next(input_dir.rglob("data_description.json"))
+        with open(data_des_fp, "r") as j:
+            data_description = json.load(j)
+    except StopIteration:
+        data_description = None
     process_fp = next(input_dir.rglob("*/processing.json"))
-    with open(session_fp, "r") as j:
-        session = json.load(j)
-    
-    with open(data_des_fp, "r") as j:
-        data_description = json.load(j)
     with open(process_fp, "r") as j:
         processing = json.load(j)
-    
+
     return session, data_description, processing
+
 
 def get_frame_rate(processing: dict) -> float:
     """Get the frame rate from the processing metadata
-    
+
     Parameters
     ----------
     processing: dict
         processing metadata
-        
+
     Returns
     -------
     frame_rate: float
@@ -269,6 +274,7 @@ def get_frame_rate(processing: dict) -> float:
         else:
             raise ValueError("Frame rate not found in processing metadata")
     return frame_rate
+
 
 if __name__ == "__main__":
     start_time = dt.now(tz.utc)
@@ -351,21 +357,24 @@ if __name__ == "__main__":
     args = parser.parse_args()
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
-    temp_dir = Path(args.temp_dir).resolve()
+    tmp_dir = Path(args.tmp_dir).resolve()
     session, data_description, processing = get_metdata(input_dir)
     if len(list(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))):
         motion_corrected_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
     else:
         motion_corrected_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
-    if "Bergamo" in session["rig_id"]:
+    if session is not None and "Bergamo" in session["rig_id"]:
         motion_corrected_fn = bergamo_segmentation(
-            motion_corrected_fn, session, temp_dir=temp_dir
+            motion_corrected_fn, session, temp_dir=tmp_dir
         )
+    if data_description is not None:
+        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+    else:
+        unique_id = motion_corrected_fn.parent.parent.name
     frame_rate = get_frame_rate(processing)
-    unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+
     output_dir = make_output_directory(output_dir, unique_id)
     parent_directory = motion_corrected_fn.parent
-
     # Set suite2p args.
     suite2p_args = suite2p.default_ops()
     # Overwrite the parameters for suite2p that are exposed
