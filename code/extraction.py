@@ -5,7 +5,7 @@ import os
 from datetime import datetime as dt
 from datetime import timezone as tz
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple
 
 import h5py
 import numpy as np
@@ -20,20 +20,30 @@ from aind_data_schema.core.processing import (
 
 
 def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
-    """Get the r value that minimizes the mutual information between the corrected trace and the neuropil trace.
+    """
+    Get the r value that minimizes the mutual information between
+    the corrected trace and the neuropil trace.
 
     Parameters
     ----------
-    raw_trace: 1D array of raw trace values
-    neuropil_trace: 1D array of neuropil trace values
-    resolution: float, resolution of r values to test
-    r_test_range:  list of two floats, range of r values to test (inclusive)
+    raw_trace : np.ndarray
+        1D array of raw trace values.
+    neuropil_trace : np.ndarray
+        1D array of neuropil trace values.
+    resolution : float
+        Resolution of r values to test.
+    r_test_range : list of float
+        List of two floats representing the inclusive range of r values to test.
 
     Returns
     -------
-    r_best: float, r value that minimizes the mutual information between the corrected trace and the neuropil trace
-    mi_iters: 1D array of floats, mutual information values for each r value tested
-    r_iters: 1D array of floats, r values tested
+    r_best : float
+        r value that minimizes the mutual information between
+        the corrected trace and the neuropil trace.
+    mi_iters : np.ndarray
+        1D array of mutual information values for each r value tested.
+    r_iters : np.ndarray
+        1D array of r values tested.
     """
     r_iters = np.arange(r_test_range[0], r_test_range[1] + resolution, resolution)
     mi_iters = np.zeros(len(r_iters))
@@ -50,19 +60,26 @@ def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[
 
 
 def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
-    """Get the corrected trace from the raw trace and neurop
-    il trace using the given r values.
+    """
+    Get the corrected trace from the raw trace and neuropil trace using the given r values.
 
     Parameters
     ----------
-    raw_trace: 1D array of raw trace values
-    neuropil_trace: 1D array of neuropil trace values
-    min_r_count: int, minimum number of r values to use for mean r value calculation
+    raw_trace : np.ndarray
+        1D array of raw trace values.
+    neuropil_trace : np.ndarray
+        1D array of neuropil trace values.
+    min_r_count : int
+        Minimum number of r values to use for mean r value calculation.
 
     Returns
     -------
-    FCs: 1D array of corrected traces for each r value
-    r_values: 1D array of r values
+    FCs : np.ndarray
+        1D array of corrected traces for each r value.
+    r_values : np.ndarray
+        1D array of r values used for the correction.
+    raw_r : np.ndarray
+        1D array of r values that minimized the mutual information.
     """
     r_values = np.zeros(raw_trace.shape[0])
     FCs = np.zeros((raw_trace.shape[0], raw_trace.shape[1]))
@@ -147,6 +164,135 @@ def write_output_metadata(
     prev_processing.write_standard_file(output_directory=Path(output_fp).parent)
 
 
+def create_virtual_dataset(
+    h5_file: Path, frame_locations: list, frames_length: int, temp_dir: Path
+) -> Path:
+    """Creates a virtual dataset from a list of frame locations
+
+    Parameters
+    ----------
+    h5_file: Path
+        path to h5 file
+    frame_locations: list
+        list of frame locations
+    frames_length: int
+        sum of frame locations
+    temp_dir: Path
+        temporary directory for virtual dataset
+
+    Returns
+    -------
+    h5_file: Path
+        path to virtual dataset
+    """
+    with h5py.File(h5_file, "r") as f:
+        data_shape = f["data"].shape
+        dtype = f["data"].dtype
+        vsource = h5py.VirtualSource(f["data"])
+        layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
+        start = 0
+        for loc in frame_locations:
+            layout[start : start + loc[1] - loc[0] + 1] = vsource[loc[0] : loc[1] + 1]
+            start += loc[1] - loc[0] + 1
+        h5_file = temp_dir / h5_file.name
+        with h5py.File(h5_file, "w") as f:
+            f.create_virtual_dataset("data", layout)
+
+    return h5_file
+
+
+def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> str:
+    """Performs singleplane motion correction on a singleplane data set
+
+    Parameters
+    ----------
+    motion_corr_fp: Path
+        path to data directory
+    session: dict
+        session information
+    temp_dir: Path
+        temporary directory for virtual dataset
+    Returns
+    -------
+    h5_file: str
+        path to motion corrected h5 file
+    """
+    motion_dir = motion_corr_fp.parent
+    tiff_stem_locs = next(motion_dir.glob("tiff_stem_locations.json"))
+    with open(tiff_stem_locs, "r") as j:
+        tiff_stem_locations = json.load(j)
+    valid_epoch_stems = [
+        i["output_parameters"]["tiff_stem"]
+        for i in session["stimulus_epochs"]
+        if i["stimulus_name"] != "2p photostimulation"
+    ]
+    frame_locations = [tiff_stem_locations[i] for i in valid_epoch_stems]
+    frames_length = sum([(i[1] - i[0] + 1) for i in frame_locations])
+
+    return create_virtual_dataset(
+        motion_corr_fp, frame_locations, frames_length, temp_dir
+    )
+
+
+def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
+    """Get the session and data description metadata from the input directory
+
+    Parameters
+    ----------
+    input_dir: Path
+        input directory
+
+    Returns
+    -------
+    session: dict
+        session metadata
+    data_description: dict
+        data description metadata
+    processing: dict
+
+    """
+    try:
+        session_fp = next(input_dir.rglob("session.json"))
+        with open(session_fp, "r") as j:
+            session = json.load(j)
+    except StopIteration:
+        session = None
+    try:
+        data_des_fp = next(input_dir.rglob("data_description.json"))
+        with open(data_des_fp, "r") as j:
+            data_description = json.load(j)
+    except StopIteration:
+        data_description = None
+    process_fp = next(input_dir.rglob("*/processing.json"))
+    with open(process_fp, "r") as j:
+        processing = json.load(j)
+
+    return session, data_description, processing
+
+
+def get_frame_rate(processing: dict) -> float:
+    """Get the frame rate from the processing metadata
+
+    Parameters
+    ----------
+    processing: dict
+        processing metadata
+
+    Returns
+    -------
+    frame_rate: float
+        frame rate
+    """
+    if processing.get("processing_pipeline") is not None:
+        processing = processing["processing_pipeline"]
+    for data_proc in processing["data_processes"]:
+        if data_proc["parameters"].get("movie_frame_rate_hz", ""):
+            frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
+        else:
+            raise ValueError("Frame rate not found in processing metadata")
+    return frame_rate
+
+
 if __name__ == "__main__":
     start_time = dt.now(tz.utc)
     # Set the log level and name the logger
@@ -228,21 +374,24 @@ if __name__ == "__main__":
     args = parser.parse_args()
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
+    tmp_dir = Path(args.tmp_dir).resolve()
+    session, data_description, processing = get_metdata(input_dir)
     if len(list(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))):
-        motion_corrected_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
+        input_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
     else:
-        motion_corrected_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
-    experiment_id = motion_corrected_fn.parent.parent.name
-    output_dir = make_output_directory(output_dir, experiment_id)
-    process_json = motion_corrected_fn.parent / "processing.json"
-    with open(process_json, "r") as j:
-        data = json.load(j)
-    if data.get("processing_pipeline") is not None:
-        data = data["processing_pipeline"]
-    for data_proc in data["data_processes"]:
-        if data_proc["parameters"].get("movie_frame_rate_hz", ""):
-            frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
+        input_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
+    parent_directory = input_fn.parent
+    if session is not None and "Bergamo" in session["rig_id"]:
+        motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
+    else:
+        motion_corrected_fn = input_fn
+    if data_description is not None:
+        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+    else:
+        unique_id = parent_directory.parent.name
+    frame_rate = get_frame_rate(processing)
 
+    output_dir = make_output_directory(output_dir, unique_id)
     # Set suite2p args.
     suite2p_args = suite2p.default_ops()
     # Overwrite the parameters for suite2p that are exposed
@@ -296,10 +445,26 @@ if __name__ == "__main__":
     if len(list(Path(args.tmp_dir).rglob("stat.npy"))):
         suite2p_stat_path = str(next(Path(args.tmp_dir).rglob("stat.npy")))
         suite2p_stats = np.load(suite2p_stat_path, allow_pickle=True)
-        suite2p_f_path = str(next(Path(args.tmp_dir).rglob("F.npy")))
-        suite2p_fneu_path = str(next(Path(args.tmp_dir).rglob("Fneu.npy")))
-        traces_roi = np.load(suite2p_f_path, allow_pickle=True)
-        traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
+        if session is not None and "Bergamo" in session["rig_id"]:
+            # extract signals for all frames, not just those used for cell detection
+            ops = suite2p_args.copy()
+            ops["h5py"] = input_fn
+            ops["save_path0"] = str(tmp_dir / "all_frames")
+            ops = suite2p.io.h5py_to_binary(ops)
+            with suite2p.io.BinaryFile(
+                Ly=ops["Ly"],
+                Lx=ops["Lx"],
+                filename=ops["reg_file"],
+                n_frames=ops["nframes"],
+            ) as f_reg:
+                stat, traces_roi, traces_neuropil, _, _ = (
+                    suite2p.extraction.extraction_wrapper(suite2p_stats, f_reg, ops=ops)
+                )
+        else:  # all frames have already been used for detection as well as extraction
+            suite2p_f_path = str(next(Path(args.tmp_dir).rglob("F.npy")))
+            suite2p_fneu_path = str(next(Path(args.tmp_dir).rglob("Fneu.npy")))
+            traces_roi = np.load(suite2p_f_path, allow_pickle=True)
+            traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
         iscell = np.load(str(next(Path(args.tmp_dir).rglob("iscell.npy"))))
         if args.use_suite2p_neuropil:
             traces_corrected = traces_roi - suite2p_args["neucoeff"] * traces_neuropil
@@ -371,7 +536,7 @@ if __name__ == "__main__":
                 dtype = "i2" if np.issubdtype(dtype, np.integer) else "f4"
             if k in ("skew", "std"):
                 f.create_dataset(f"traces/{k}", data=stat[k], dtype=dtype)
-        # ROIs
+            # ROIs
             else:
                 f.create_dataset(f"rois/{k}", data=stat[k], dtype=dtype)
         f.create_dataset("rois/coords", data=coords, compression="gzip")
@@ -379,7 +544,9 @@ if __name__ == "__main__":
         f.create_dataset(
             "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
         )  # neurons x height x width
-        f.create_dataset("rois/neuropil_coords", data=neuropil_coords, compression="gzip")
+        f.create_dataset(
+            "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
+        )
         # cellpose
         for k in cp.keys():
             f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
@@ -388,9 +555,9 @@ if __name__ == "__main__":
 
     write_output_metadata(
         vars(args),
-        str(motion_corrected_fn.parent),
+        str(parent_directory),
         ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION,
-        motion_corrected_fn,
+        input_fn,
         output_dir / "extraction.h5",
         start_time,
     )
