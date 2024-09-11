@@ -82,7 +82,7 @@ def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
         1D array of r values that minimized the mutual information.
     """
     r_values = np.zeros(raw_trace.shape[0])
-    FCs = np.zeros((raw_trace.shape[0], raw_trace.shape[1]))
+    FCs = np.zeros_like(raw_trace)
     for roi in range(raw_trace.shape[0]):
         r_values[roi], _, _ = get_r_from_min_mi(raw_trace[roi], neuropil_trace[roi])
     mean_r = np.mean(r_values[r_values < 1])
@@ -447,19 +447,11 @@ if __name__ == "__main__":
         suite2p_stats = np.load(suite2p_stat_path, allow_pickle=True)
         if session is not None and "Bergamo" in session["rig_id"]:
             # extract signals for all frames, not just those used for cell detection
-            ops = suite2p_args.copy()
-            ops["h5py"] = input_fn
-            ops["save_path0"] = str(tmp_dir / "all_frames")
-            ops = suite2p.io.h5py_to_binary(ops)
-            with suite2p.io.BinaryFile(
-                Ly=ops["Ly"],
-                Lx=ops["Lx"],
-                filename=ops["reg_file"],
-                n_frames=ops["nframes"],
-            ) as f_reg:
-                stat, traces_roi, traces_neuropil, _, _ = (
-                    suite2p.extraction.extraction_wrapper(suite2p_stats, f_reg, ops=ops)
+            stat, traces_roi, traces_neuropil, _, _ = (
+                suite2p.extraction.extraction_wrapper(
+                    suite2p_stats, h5py.File(input_fn)["data"], ops=suite2p_args
                 )
+            )
         else:  # all frames have already been used for detection as well as extraction
             suite2p_f_path = str(next(Path(args.tmp_dir).rglob("F.npy")))
             suite2p_fneu_path = str(next(Path(args.tmp_dir).rglob("Fneu.npy")))
