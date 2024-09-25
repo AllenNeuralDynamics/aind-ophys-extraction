@@ -39,5 +39,7 @@ __`cellpose`:__
 - `final_locations`: Final pixel locations after Euler integration
 - `styles`: Style vector summarizing each image
 
-An additional dataset at the root of `extraction.h5` is:
+Additional datasets at the root of `extraction.h5` are:
 - `iscell`: Specifies whether a ROI is a cell, first column is 0/1, and second column is probability that the ROI is a cell based on the default classifier
+- `meanImg`: The mean image of the movie over time
+- `maxImg`: The maximum intensity projection of the movie over time
