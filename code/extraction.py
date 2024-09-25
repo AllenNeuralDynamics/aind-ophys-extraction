@@ -508,7 +508,8 @@ if __name__ == "__main__":
             raw_r = []
         keys = []
 
-    cellpose_path = str(next(Path(args.tmp_dir).glob("**/cellpose.npz")))
+    cellpose_path = str(next(Path(args.tmp_dir).rglob("cellpose.npz")))
+    ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy")))
     # write output files
     with (
         h5py.File(output_dir / "extraction.h5", "w") as f,
@@ -545,6 +546,10 @@ if __name__ == "__main__":
             f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
         # classifier
         f.create_dataset(f"iscell", data=iscell, dtype="f4")
+        # summary images
+        ops = np.load(ops_path, allow_pickle=True)[()]
+        f.create_dataset(f"meanImg", data=ops["meanImg"], compression="gzip")
+        f.create_dataset(f"maxImg", data=ops["max_proj"], compression="gzip")
 
     write_output_metadata(
         vars(args),
