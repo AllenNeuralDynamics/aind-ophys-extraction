@@ -285,11 +285,12 @@ def get_frame_rate(processing: dict) -> float:
     """
     if processing.get("processing_pipeline") is not None:
         processing = processing["processing_pipeline"]
+    frame_rate = None
     for data_proc in processing["data_processes"]:
         if data_proc["parameters"].get("movie_frame_rate_hz", ""):
             frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
-        else:
-            raise ValueError("Frame rate not found in processing metadata")
+    if frame_rate == None:
+        raise ValueError("Frame rate not found in processing metadata")
     return frame_rate
 
 
