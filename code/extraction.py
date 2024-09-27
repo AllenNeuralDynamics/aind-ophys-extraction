@@ -4,19 +4,22 @@ import logging
 import os
 from datetime import datetime as dt
 from datetime import timezone as tz
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Tuple, Union
 
+import cv2
 import h5py
+import imageio_ffmpeg
+import matplotlib.pyplot as plt
 import numpy as np
 import skimage
+import sparse
 import suite2p
-from aind_data_schema.core.processing import (
-    DataProcess,
-    PipelineProcess,
-    Processing,
-    ProcessName,
-)
+from aind_data_schema.core.processing import (DataProcess, PipelineProcess,
+                                              Processing, ProcessName)
+from aind_ophys_utils.array_utils import downsample_array
+from aind_ophys_utils.summary_images import max_corr_image
 
 
 def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
@@ -294,6 +297,269 @@ def get_frame_rate(processing: dict) -> float:
     return frame_rate
 
 
+def com(rois):
+    """Calculation of the center of mass for spatial components
+
+    Parameters
+    ----------
+    rois : np.ndarray or sparse.COO tensor
+        Tensor of Spatial components (K x height x width)
+
+    Returns
+    -------
+    cm : np.ndarray
+        center of mass for spatial components (K x 2)
+    """
+    d1, d2 = rois.shape[1:]
+    Coor = np.array(
+        list(map(np.ravel, np.meshgrid(np.arange(d2), np.arange(d1)))), dtype=rois.dtype
+    )
+    A = rois.reshape((rois.shape[0], d1 * d2)).tocsc()
+    return (A / A.sum(axis=1)).dot(Coor.T)
+
+
+def get_contours(rois, thr=0.2, thr_method="max"):
+    """Gets contour of spatial components and returns their coordinates
+
+    Parameters
+    ----------
+    rois : np.ndarray or sparse.COO tensor
+        Tensor of Spatial components (K x height x width)
+    thr : float between 0 and 1, optional
+        threshold for computing contours, by default 0.2
+    thr_method : str, optional
+        Method of thresholding:
+            'max' sets to zero pixels that have value less than a fraction of the max value
+            'nrg' keeps the pixels that contribute up to a specified fraction of the energy
+
+    Returns
+    -------
+    coordinates : list
+        list of coordinates with center of mass and contour plot coordinates for each component
+    """
+
+    nr, dims = rois.shape[0], rois.shape[1:]
+    d1, d2 = dims[:2]
+    d = np.prod(dims)
+    x, y = np.mgrid[0:d1:1, 0:d2:1]
+
+    coordinates = []
+
+    # get the center of mass of neurons( patches )
+    cm = com(rois)
+    A = rois.T.reshape((d, nr)).tocsc()
+
+    for i in range(nr):
+        pars = dict()
+        # we compute the cumulative sum of the energy of the Ath component that has been ordered from least to highest
+        patch_data = A.data[A.indptr[i] : A.indptr[i + 1]]
+        indx = np.argsort(patch_data)[::-1]
+        if thr_method == "nrg":
+            cumEn = np.cumsum(patch_data[indx] ** 2)
+            if len(cumEn) == 0:
+                pars = dict(
+                    coordinates=np.array([]),
+                    CoM=np.array([np.NaN, np.NaN]),
+                    neuron_id=i + 1,
+                )
+                coordinates.append(pars)
+                continue
+            else:
+                # we work with normalized values
+                cumEn /= cumEn[-1]
+                Bvec = np.ones(d)
+                # we put it in a similar matrix
+                Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]][indx]] = cumEn
+        else:
+            if thr_method != "max":
+                warn("Unknown threshold method. Choosing max")
+            Bvec = np.zeros(d)
+            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
+                patch_data / patch_data.max()
+            )
+
+        Bmat = np.reshape(Bvec, dims, order="F")
+        pars["coordinates"] = []
+        # for each dimensions we draw the contour
+        for B in Bmat if len(dims) == 3 else [Bmat]:
+            vertices = skimage.measure.find_contours(B.T, thr)
+            # this fix is necessary for having disjoint figures and borders plotted correctly
+            v = np.atleast_2d([np.nan, np.nan])
+            for _, vtx in enumerate(vertices):
+                num_close_coords = np.sum(np.isclose(vtx[0, :], vtx[-1, :]))
+                if num_close_coords < 2:
+                    if num_close_coords == 0:
+                        # case angle
+                        newpt = np.round(vtx[-1, :] / [d2, d1]) * [d2, d1]
+                        vtx = np.concatenate((vtx, newpt[np.newaxis, :]), axis=0)
+                    else:
+                        # case one is border
+                        vtx = np.concatenate((vtx, vtx[0, np.newaxis]), axis=0)
+                v = np.concatenate((v, vtx, np.atleast_2d([np.nan, np.nan])), axis=0)
+
+            pars["coordinates"] = v if len(dims) == 2 else (pars["coordinates"] + [v])
+        pars["CoM"] = np.squeeze(cm[i, :])
+        pars["neuron_id"] = i + 1
+        coordinates.append(pars)
+    return coordinates
+
+
+def contour_video(
+    output_path: str,
+    data: Union[h5py.Dataset, np.ndarray],
+    rois: Union[sparse.COO, np.ndarray],
+    traces: np.ndarray,
+    downscale: int = 10,
+    fs: float = 30,
+    lower_quantile: float = 0.02,
+    upper_quantile: float = 0.9975,
+    only_raw: bool = False,
+    n_jobs: int = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp),
+    bitrate: str = "0",
+    crf: int = 20,
+    cpu_used: int = 4,
+):
+    """Create a video contours using vp9 codec via imageio-ffmpeg
+
+    Parameters
+    ----------
+    output_path : str
+        Desired output path for encoded video
+    data : h5py.Dataset or numpy.ndarray
+        Video to be encoded
+    rois : np.ndarray or sparse.COO tensor
+        Tensor of spatial components (K x height x width)
+    traces: np.ndarray
+        Tensor of temporal components (K x T)
+    downscale : int = 10
+        Decimation factor
+    fs : float
+        Desired frame rate for encoded video
+    lower_quantile : float
+        Lower cutoff value supplied to `np.quantile()` for normalization
+    upper_quantile : float
+        Upper cutoff value supplied to `np.quantile()` for normalization
+    only_raw : bool, optional
+        Produce video of raw data only, i.e. no reconstruction and residual
+    n_jobs : int, optional
+        The number of jobs to run in parallel.
+    bitrate : str, optional
+        Desired bitrate of output, by default "0". The default *MUST*
+        be zero in order to encode in constant quality mode. Other values
+        will result in constrained quality mode.
+    crf : int, optional
+        Desired perceptual quality of output, by default 20. Value can
+        be from 0 - 63. Lower values mean better quality (but bigger video
+        sizes).
+    cpu_used : int, optional
+        Sets how efficient the compression will be, by default 4. Values can
+        be between 0 and 5. Higher values increase encoding speed at the
+        expense of having some impact on quality and rate control accuracy.
+    """
+    dims = data.shape[1:]
+    # create image of countours
+    img_contours = np.zeros(dims + (3,), np.uint8)
+    rgb = (255, 127, 14)
+    for m in rois:
+        if isinstance(m, sparse.COO):
+            m = m.todense()
+        ret, thresh = cv2.threshold(
+            (m > m.max() / 10).astype(np.uint8), 0, 1, cv2.THRESH_BINARY
+        )
+        contours = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)[-2]
+        for contour in contours:
+            cv2.drawContours(img_contours, contour, -1, rgb, max(max(dims) // 200, 1))
+    # assemble movie tiles
+    mov = downsample_array(data, downscale, 1, n_jobs=n_jobs)
+    minmov, maxmov = np.nanquantile(
+        mov[:: max(1, len(mov) // 100)], (lower_quantile, upper_quantile)
+    )
+    scale = lambda m: np.array(
+        ThreadPool(n_jobs).map(
+            lambda frame: np.clip(
+                255 * (frame - minmov) / (maxmov - minmov), 0, 255
+            ).astype(np.uint8),
+            m,
+        )
+    )
+    if only_raw:
+        mov = scale(mov)
+    else:
+        img_contours = np.repeat(img_contours[..., None], 3, 0).reshape(
+            dims[0], 3 * dims[1], -1
+        )
+        reconstructed = np.tensordot(
+            downsample_array(traces.T, downscale, 1, n_jobs=n_jobs).astype("f4"),
+            rois,
+            1,
+        )
+        residual = scale(mov - reconstructed)
+        mov = scale(mov)
+        reconstructed = scale(reconstructed)
+        mov = np.concatenate([mov, reconstructed, residual], 2)
+        del reconstructed
+        del residual
+    # create canvas with labels
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    magnify = max(500 // dims[0], 1)
+    h, w = dims[0] * magnify, dims[1] * magnify
+    textheight = cv2.getTextSize("True", font, h / 600, max(h // 200, 1))[0][1]
+    canvas_size = (
+        int(np.ceil(h * 1.08 / 16)) * 16,
+        # int(np.ceil(((w if only_raw else 3 * w) + 1.3 * textheight)  / 16)) * 16,
+        int(np.ceil((w if only_raw else 3 * w) / 16)) * 16,
+    )
+    # textpad = canvas_size[1] - 3 * w  # left padding for vertical text
+    pad = (canvas_size[1] - 3 * w) // 2
+    canvas = np.zeros(canvas_size + (3,), np.uint8)
+    for i in range(1 if only_raw else 3):
+        # text = ("Original", "Reconstructed", "Residual")[i]
+        text = ("Original", "ROI Activity", "Remainder")[i]
+        fontscale = min(h / 600, w / 190)
+        textsize = cv2.getTextSize(text, font, fontscale, max(h // 200, 1))[0]
+        cv2.putText(
+            canvas,
+            text,
+            (int(w * (0.49, 1.5, 2.51)[i] + pad - textsize[0] / 2), h // 25),
+            font,
+            fontscale,
+            (255, 255, 255),
+            max(h // 200, 1),
+            cv2.LINE_4,
+        )
+    # create writer object
+    writer = imageio_ffmpeg.write_frames(
+        output_path,
+        canvas_size[::-1],  # ffmpeg expects video shape in terms of: (width, height)
+        pix_fmt_in="rgb24",
+        pix_fmt_out="yuv420p",
+        codec="libvpx-vp9",
+        fps=fs,
+        bitrate=bitrate,
+        output_params=[
+            "-crf",
+            str(crf),
+            "-row-mt",
+            "1",
+            "-cpu-used",
+            str(cpu_used),
+        ],
+    )
+    writer.send(None)  # Seed ffmpeg-imageio writer generator
+    # overlay image of contours and write each frame
+    if magnify > 1:
+        img_contours = cv2.resize(img_contours, (0, 0), fx=magnify, fy=magnify)
+    is_contours = img_contours != 0
+    for frame in mov:
+        if magnify > 1:
+            frame = cv2.resize(frame, (0, 0), fx=magnify, fy=magnify)
+        frame = np.repeat(frame[..., None], 3, 2)
+        frame[is_contours] = img_contours[is_contours]
+        canvas[-h:, -(w if only_raw else 3 * w) :] = frame
+        writer.send(canvas)
+    writer.close()
+
+
 if __name__ == "__main__":
     start_time = dt.now(tz.utc)
     # Set the log level and name the logger
@@ -370,6 +636,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to use the fix weight provided by suite2p for neuropil \
         correction. If not, we use a mutual information based method.",
+    )
+    parser.add_argument(
+        "--contour_video",
+        action="store_true",
+        help="Create a video overlaying the raw data, ROI activity, "
+        "and remainder with ROI contours.",
     )
 
     args = parser.parse_args()
@@ -535,9 +807,8 @@ if __name__ == "__main__":
                 f.create_dataset(f"rois/{k}", data=stat[k], dtype=dtype)
         f.create_dataset("rois/coords", data=coords, compression="gzip")
         f.create_dataset("rois/data", data=data, compression="gzip")
-        f.create_dataset(
-            "rois/shape", data=np.array([len(traces_roi), *dims], dtype=np.int16)
-        )  # neurons x height x width
+        shape = np.array([len(traces_roi), *dims], dtype=np.int16)
+        f.create_dataset("rois/shape", data=shape)  # neurons x height x width
         f.create_dataset(
             "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
         )
@@ -559,3 +830,38 @@ if __name__ == "__main__":
         output_dir / "extraction.h5",
         start_time,
     )
+
+    # plot contours of detected ROIs over a selection of summary images
+    rois = sparse.COO(coords, data, shape)
+    cm = com(rois)
+    coordinates = get_contours(rois)
+    with h5py.File(str(motion_corrected_fn), "r") as f:
+        corr_img = max_corr_image(f["data"])
+    # plot
+    x_size = 8.5 * max(dims[1] / dims[0], 0.4)
+    plt.figure(figsize=(x_size, 3))
+    for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
+        plt.subplot(1, 3, 1 + i)
+        vmin, vmax = np.nanpercentile(img, (1, 99))
+        plt.imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
+        for c in coordinates:
+            plt.plot(*c["coordinates"].T, c="orange")
+        for k in range(rois.shape[0]):
+            plt.text(*cm[k], str(k), color="orange")
+        plt.axis("off")
+        plt.title(
+            ("mean image", "max image", "correlation image")[i],
+            fontsize=min(12, 2.4 + 2 * x_size),
+        )
+    plt.tight_layout(pad=0.1)
+    plt.savefig(output_dir / "detected_ROIs.png", bbox_inches="tight", pad_inches=0.02)
+
+    if args.contour_video:
+        with h5py.File(str(motion_corrected_fn), "r") as f:
+            contour_video(
+                output_dir / "ROI_contours_overlay.webm",
+                f["data"],
+                rois,
+                traces_corrected,
+                fs=frame_rate,
+            )
