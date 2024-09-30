@@ -1,4 +1,4 @@
-FROM registry.codeocean.allenneuraldynamics.org/codeocean/jupyterlab:3.4.4-miniconda4.12.0-python3.9-ubuntu20.04
+FROM continuumio/miniconda3:23.9.0-0
 
 ENV EXTRACTION_URL=https://github.com/AllenNeuralDynamics/aind-ophys-extraction-suite2p
 
