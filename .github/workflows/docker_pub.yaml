@@ -22,6 +22,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
         with:
-          context: .
+          context: ./environment
+          file: ./environment/Dockerfile
           push: true
           tags: ghcr.io/allenneuraldynamics/aind-ophys-extraction-suite2p:latest
