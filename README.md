@@ -12,7 +12,7 @@ of the _registered_ (or, in the case of multi-plane imaging, _decrosstalked_) mo
 ## Output
 
 The main output is the `extraction.h5` file.   
-For QC, the figure `detected_ROIs.png` displays contours of the detected ROIs over a selection of summary images.
+For QC, the figures `detected_ROIs.png` and `detected_ROIs_withIDs.png` display contours of the detected ROIs over a selection of summary images.
 If the capsule is run with the `--contour_video` argument, a 10x sped-up video is also created, showing ROI contours overlaid on the raw data, along with ROI activity and the remainder.
 <br>
 The `extraction.h5` file contains three groups: `traces`, `rois`, and `cellpose`, with the latter only present if Cellpose is used for detection (--anatomical_only ≠ 0).
