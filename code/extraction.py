@@ -842,23 +842,24 @@ if __name__ == "__main__":
     with h5py.File(str(motion_corrected_fn), "r") as f:
         corr_img = max_corr_image(f["data"])
     # plot
-    x_size = 8.5 * max(dims[1] / dims[0], 0.4)
-    fix, ax = plt.subplots(1, 3, figsize=(x_size, 3))
+    x_size = 17 * max(dims[1] / dims[0], 0.4)
+    fix, ax = plt.subplots(1, 3, figsize=(x_size, 6))
+    lw = min(512 / max(*dims), 3)
     for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
         vmin, vmax = np.nanpercentile(img, (1, 99))
         ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
         for c in coordinates:
-            ax[i].plot(*c["coordinates"].T, c="orange")
-        plt.axis("off")
-        plt.title(
+            ax[i].plot(*c["coordinates"].T, c="orange", lw=lw)
+        ax[i].axis("off")
+        ax[i].set_title(
             ("mean image", "max image", "correlation image")[i],
-            fontsize=min(12, 2.4 + 2 * x_size),
+            fontsize=min(24, 2.4 + 2 * x_size),
         )
     plt.tight_layout(pad=0.1)
     plt.savefig(output_dir / "detected_ROIs.png", bbox_inches="tight", pad_inches=0.02)
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
-            ax[i].text(*cm[k], str(k), color="orange")
+            ax[i].text(*cm[k], str(k), color="orange", fontsize=8*lw)
     plt.savefig(output_dir / "detected_ROIs_withIDs.png", bbox_inches="tight", pad_inches=0.02)
 
     if args.contour_video:
