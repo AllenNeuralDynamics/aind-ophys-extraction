@@ -649,10 +649,10 @@ if __name__ == "__main__":
     input_dir = Path(args.input_dir).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
     session, data_description, processing = get_metdata(input_dir)
-    if len(list(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))):
-        input_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
+    if next(input_dir.rglob("decrosstalk.h5"), ""):
+        input_fn = next(input_dir.rglob("decrosstalk.h5"))
     else:
-        input_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
+        input_fn = next(input_dir.rglob("registered.h5"))
     parent_directory = input_fn.parent
     if session is not None and "Bergamo" in session["rig_id"]:
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
