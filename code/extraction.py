@@ -658,10 +658,11 @@ if __name__ == "__main__":
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
-    if data_description is not None:
-        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+    if "multiplane" in data_description.get("name", "") or not data_description:
+        unique_id = motion_corrected_fn.parent.parent.name
     else:
-        unique_id = parent_directory.parent.name
+        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+        
     frame_rate = get_frame_rate(processing)
 
     output_dir = make_output_directory(output_dir, unique_id)
