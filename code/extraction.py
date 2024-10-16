@@ -3,7 +3,6 @@ import json
 import logging
 import os
 from datetime import datetime as dt
-from datetime import timezone as tz
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Tuple, Union
@@ -151,7 +150,7 @@ def write_output_metadata(
                     name=process_name,
                     software_version="1ce0d71d0ea74ad6c9f3b93c4db400696d885b4b",  # TODO: FIX THIS!!
                     start_date_time=start_date_time,
-                    end_date_time=dt.now(tz.utc),
+                    end_date_time=dt.now(),
                     input_location=str(input_fp),
                     output_location=str(output_fp),
                     code_url=(os.getenv("EXTRACTION_URL")),
@@ -561,7 +560,7 @@ def contour_video(
 
 
 if __name__ == "__main__":
-    start_time = dt.now(tz.utc)
+    start_time = dt.now()
     # Set the log level and name the logger
     logger = logging.getLogger(
         "Source extraction using Suite2p with or without Cellpose"
