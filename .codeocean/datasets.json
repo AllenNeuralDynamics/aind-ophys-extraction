@@ -2,8 +2,8 @@
 	"version": 1,
 	"attached_datasets": [
 		{
-			"id": "de1e574f-385f-4e34-8539-631d4c8d90c1",
-			"mount": "decrosstalk_test"
+			"id": "849ba6a8-035c-4dcc-b7e7-819fcf80be32",
+			"mount": "decrosstalk_test2"
 		}
 	]
 }

@@ -649,7 +649,7 @@ if __name__ == "__main__":
     input_dir = Path(args.input_dir).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
     session, data_description, processing = get_metdata(input_dir)
-    if next(input_dir.rglob("decrosstalk.h5"), ""):
+    if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
         input_fn = next(input_dir.rglob("*registered.h5"))
