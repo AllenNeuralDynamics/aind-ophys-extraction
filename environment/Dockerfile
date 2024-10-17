@@ -4,6 +4,10 @@ ENV EXTRACTION_URL=https://github.com/AllenNeuralDynamics/aind-ophys-extraction-
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+ENV PIPELINE_URL=""
+ENV PIPELINE_VERSION=""
+ENV VERSION="2.0"
+
 ARG GIT_ASKPASS
 ARG GIT_ACCESS_TOKEN
 COPY git-askpass /

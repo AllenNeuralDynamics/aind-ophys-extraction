@@ -3,7 +3,6 @@ import json
 import logging
 import os
 from datetime import datetime as dt
-from datetime import timezone as tz
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Tuple, Union
@@ -144,14 +143,14 @@ def write_output_metadata(
     processing = Processing(
         processing_pipeline=PipelineProcess(
             processor_full_name="Multplane Ophys Processing Pipeline",
-            pipeline_url="https://codeocean.allenneuraldynamics.org/capsule/7026342/tree",
-            pipeline_version="0.5.0",
+            pipeline_url=os.getenv("PIPELINE_URL", ""),
+            pipeline_version=os.getenv("PIPELINE_VERSION", ""),
             data_processes=[
                 DataProcess(
                     name=process_name,
-                    software_version="1ce0d71d0ea74ad6c9f3b93c4db400696d885b4b",  # TODO: FIX THIS!!
+                    software_version=os.getenv("VERSION", ""),
                     start_date_time=start_date_time,
-                    end_date_time=dt.now(tz.utc),
+                    end_date_time=dt.now(),
                     input_location=str(input_fp),
                     output_location=str(output_fp),
                     code_url=(os.getenv("EXTRACTION_URL")),
@@ -561,7 +560,7 @@ def contour_video(
 
 
 if __name__ == "__main__":
-    start_time = dt.now(tz.utc)
+    start_time = dt.now()
     # Set the log level and name the logger
     logger = logging.getLogger(
         "Source extraction using Suite2p with or without Cellpose"
@@ -649,19 +648,20 @@ if __name__ == "__main__":
     input_dir = Path(args.input_dir).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
     session, data_description, processing = get_metdata(input_dir)
-    if len(list(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))):
-        input_fn = next(input_dir.glob("*/decrosstalk/*decrosstalk.h5"))
+    if next(input_dir.rglob("*decrosstalk.h5"), ""):
+        input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
-        input_fn = next(input_dir.glob("*/motion_correction/*registered.h5"))
+        input_fn = next(input_dir.rglob("*registered.h5"))
     parent_directory = input_fn.parent
     if session is not None and "Bergamo" in session["rig_id"]:
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
-    if data_description is not None:
-        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+    if "multiplane" in data_description.get("name", "") or not data_description:
+        unique_id = motion_corrected_fn.parent.parent.name
     else:
-        unique_id = parent_directory.parent.name
+        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+        
     frame_rate = get_frame_rate(processing)
 
     output_dir = make_output_directory(output_dir, unique_id)
