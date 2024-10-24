@@ -784,7 +784,7 @@ if __name__ == "__main__":
     ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy")))
     # write output files
     with (
-        h5py.File(output_dir / "extraction.h5", "w") as f
+        h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f
     ):
         # traces
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
@@ -856,16 +856,16 @@ if __name__ == "__main__":
             fontsize=min(24, 2.4 + 2 * x_size),
         )
     plt.tight_layout(pad=0.1)
-    plt.savefig(output_dir / "detected_ROIs.png", bbox_inches="tight", pad_inches=0.02)
+    plt.savefig(output_dir / f"{unique_id}_detected_ROIs.png", bbox_inches="tight", pad_inches=0.02)
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
             ax[i].text(*cm[k], str(k), color="orange", fontsize=8*lw)
-    plt.savefig(output_dir / "detected_ROIs_withIDs.png", bbox_inches="tight", pad_inches=0.02)
+    plt.savefig(output_dir / f"{unique_id}_detected_ROIs_withIDs.png", bbox_inches="tight", pad_inches=0.02)
 
     if args.contour_video:
         with h5py.File(str(motion_corrected_fn), "r") as f:
             contour_video(
-                output_dir / "ROI_contours_overlay.webm",
+                output_dir / f"{unique_id}_ROI_contours_overlay.webm",
                 f["data"],
                 rois,
                 traces_corrected,
