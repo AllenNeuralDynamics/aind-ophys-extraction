@@ -17,7 +17,7 @@ RUN pip3 install -U --no-cache-dir \
 
 RUN pip3 install -U --no-cache-dir \
     aind-data-schema==0.22.0 \
-    cellpose \
+    cellpose==3.0 \
     h5py \
     pydantic==2.8.2 \
     sbxreader \
