@@ -4,9 +4,9 @@ ENV EXTRACTION_URL=https://github.com/AllenNeuralDynamics/aind-ophys-extraction-
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-ENV PIPELINE_URL="https://codeocean.allenneuraldynamics.org/capsule/6127754/tree"
-ENV PIPELINE_VERSION="2.0"
-ENV VERSION="3.0"
+ENV PIPELINE_URL="https://codeocean.allenneuraldynamics.org/capsule/5619253/tree"
+ENV PIPELINE_VERSION="1.0"
+ENV VERSION="5.0"
 
 ARG GIT_ASKPASS
 ARG GIT_ACCESS_TOKEN
