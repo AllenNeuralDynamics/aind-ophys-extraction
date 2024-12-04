@@ -220,20 +220,21 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
         path to motion corrected h5 file
     """
     motion_dir = motion_corr_fp.parent
-    tiff_stem_locs = next(motion_dir.glob("tiff_stem_locations.json"))
-    with open(tiff_stem_locs, "r") as j:
-        tiff_stem_locations = json.load(j)
+    epoch_loc_fp = next(motion_dir.glob("epoch_locations.json"))
+    with open(epoch_loc_fp, "r") as j:
+        epoch_locations = json.load(j)
     valid_epoch_stems = [
         i["output_parameters"]["tiff_stem"]
         for i in session["stimulus_epochs"]
         if i["stimulus_name"] != "2p photostimulation"
     ]
-    frame_locations = [tiff_stem_locations[i] for i in valid_epoch_stems]
+    frame_locations = [epoch_locations[i] for i in valid_epoch_stems]
     frames_length = sum([(i[1] - i[0] + 1) for i in frame_locations])
 
     return create_virtual_dataset(
         motion_corr_fp, frame_locations, frames_length, temp_dir
     )
+
 
 
 def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
