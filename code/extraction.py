@@ -634,7 +634,7 @@ if __name__ == "__main__":
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
     setup_logging(
-        "aind-ophys-extraction-suite2p", mouse_id=subject_id, session=data_description
+        "aind-ophys-extraction-suite2p", mouse_id=subject_id, session=name
     )
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
