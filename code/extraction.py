@@ -52,9 +52,7 @@ def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[
     raw_trace[np.isnan(raw_trace)] = 0
     for r_i, r_temp in enumerate(r_iters):
         Fc = raw_trace - r_temp * neuropil_trace
-        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(
-            Fc, neuropil_trace
-        )
+        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(Fc, neuropil_trace)
     min_ind = np.argmin(mi_iters)
     r_best = r_iters[min_ind]
     return r_best, mi_iters, r_iters
@@ -226,7 +224,6 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
     )
 
 
-
 def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     """Get the session and data description metadata from the input directory
 
@@ -248,7 +245,7 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     """
     session_fp = next(input_dir.rglob("session.json"))
     with open(session_fp, "r") as j:
-    session = json.load(j)
+        session = json.load(j)
     data_des_fp = next(input_dir.rglob("data_description.json"))
     with open(data_des_fp, "r") as j:
         data_description = json.load(j)
@@ -363,9 +360,7 @@ def get_contours(rois, thr=0.2, thr_method="max"):
             if thr_method != "max":
                 warn("Unknown threshold method. Choosing max")
             Bvec = np.zeros(d)
-            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
-                patch_data / patch_data.max()
-            )
+            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = patch_data / patch_data.max()
 
         Bmat = np.reshape(Bvec, dims, order="F")
         pars["coordinates"] = []
@@ -552,9 +547,7 @@ def contour_video(
 if __name__ == "__main__":
     start_time = dt.now()
     # Set the log level and name the logger
-    logger = logging.getLogger(
-        "Source extraction using Suite2p with or without Cellpose"
-    )
+    logger = logging.getLogger("Source extraction using Suite2p with or without Cellpose")
     logger.setLevel(logging.INFO)
 
     # Parse command-line arguments
@@ -640,7 +633,9 @@ if __name__ == "__main__":
     session, data_description, processing, subject = get_metdata(input_dir)
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
-    setup_logging("aind-ophys-extraction-suite2p", mouse_id=subject_id, session=data_description)
+    setup_logging(
+        "aind-ophys-extraction-suite2p", mouse_id=subject_id, session=data_description
+    )
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
@@ -654,7 +649,7 @@ if __name__ == "__main__":
         unique_id = motion_corrected_fn.parent.parent.name
     else:
         unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
-        
+
     frame_rate = get_frame_rate(processing)
 
     output_dir = make_output_directory(output_dir, unique_id)
@@ -728,9 +723,7 @@ if __name__ == "__main__":
             traces_corrected = traces_roi - suite2p_args["neucoeff"] * traces_neuropil
             r_values = suite2p_args["neucoeff"] * np.ones(traces_roi.shape[0])
         else:
-            traces_corrected, r_values, raw_r = get_FC_from_r(
-                traces_roi, traces_neuropil
-            )
+            traces_corrected, r_values, raw_r = get_FC_from_r(traces_roi, traces_neuropil)
         # convert ROIs to sparse COO 3D-tensor a la https://sparse.pydata.org/en/stable/construct.html
         data = []
         coords = []
@@ -776,9 +769,7 @@ if __name__ == "__main__":
     cellpose_path = str(next(Path(args.tmp_dir).rglob("cellpose.npz"), ""))
     ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy")))
     # write output files
-    with (
-        h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f
-    ):
+    with h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f:
         # traces
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
         f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
@@ -801,9 +792,7 @@ if __name__ == "__main__":
         f.create_dataset("rois/data", data=data, compression="gzip")
         shape = np.array([len(traces_roi), *dims], dtype=np.int16)
         f.create_dataset("rois/shape", data=shape)  # neurons x height x width
-        f.create_dataset(
-            "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
-        )
+        f.create_dataset("rois/neuropil_coords", data=neuropil_coords, compression="gzip")
         # cellpose
         if cellpose_path:
             with np.load(cellpose_path) as cp:
@@ -849,11 +838,19 @@ if __name__ == "__main__":
             fontsize=min(24, 2.4 + 2 * x_size),
         )
     plt.tight_layout(pad=0.1)
-    plt.savefig(output_dir / f"{unique_id}_detected_ROIs.png", bbox_inches="tight", pad_inches=0.02)
+    plt.savefig(
+        output_dir / f"{unique_id}_detected_ROIs.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
-            ax[i].text(*cm[k], str(k), color="orange", fontsize=8*lw)
-    plt.savefig(output_dir / f"{unique_id}_detected_ROIs_withIDs.png", bbox_inches="tight", pad_inches=0.02)
+            ax[i].text(*cm[k], str(k), color="orange", fontsize=8 * lw)
+    plt.savefig(
+        output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
 
     if args.contour_video:
         with h5py.File(str(motion_corrected_fn), "r") as f:
