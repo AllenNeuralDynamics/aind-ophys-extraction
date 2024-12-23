@@ -16,9 +16,10 @@ import skimage
 import sparse
 import suite2p
 from aind_data_schema.core.processing import DataProcess, ProcessName
+from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import max_corr_image
-from aind_log_utils.log import setup_logging
+
 
 def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
     """
@@ -634,9 +635,7 @@ if __name__ == "__main__":
     session, data_description, processing, subject = get_metdata(input_dir)
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
-    setup_logging(
-        "aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name
-    )
+    setup_logging("aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name)
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
