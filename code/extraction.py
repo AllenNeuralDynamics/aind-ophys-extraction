@@ -18,7 +18,7 @@ import suite2p
 from aind_data_schema.core.processing import DataProcess, ProcessName
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import max_corr_image
-
+from aind_log_utils.log import setup_logging
 
 def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
     """
