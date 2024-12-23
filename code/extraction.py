@@ -253,7 +253,7 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     process_fp = next(input_dir.rglob("*/processing.json"))
     with open(process_fp, "r") as j:
         processing = json.load(j)
-    session_fp = next(input_dir.rglob("subject.json"))
+    subject_fp = next(input_dir.rglob("subject.json"))
     with open(subject_fp, "r") as j:
         subject = json.load(j)
 
