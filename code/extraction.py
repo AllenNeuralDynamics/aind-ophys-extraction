@@ -810,9 +810,8 @@ if __name__ == "__main__":
 
     write_data_process(
         vars(args),
-        str(parent_directory),
         input_fn,
-        output_dir / "extraction.h5",
+        output_dir / f"{unique_id}_extraction.h5",
         start_time,
         dt.now(),
     )
