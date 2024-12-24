@@ -269,7 +269,7 @@ def get_frame_rate(session: dict) -> float:
     frame_rate: float
         frame rate
     """
-    return float(session["data_processes"][0]["ophys_fovs"][0]["frame_rate"])
+    return float(session["data_streams"][0]["ophys_fovs"][0]["frame_rate"])
 
 
 def com(rois):
