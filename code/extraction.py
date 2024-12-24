@@ -124,7 +124,7 @@ def write_data_process(
     start_time: dt,
     end_time: dt,
 ) -> None:
-    """Writes output metadata to plane processing.json
+    """Writes output metadata to plane data_process.json
 
     Parameters
     ----------
@@ -240,8 +240,6 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
         session metadata
     data_description: dict
         data description metadata
-    processing: dict
-        processing metadata
     subject: dict
         subject metadata
     """
@@ -251,38 +249,27 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     data_des_fp = next(input_dir.rglob("data_description.json"))
     with open(data_des_fp, "r") as j:
         data_description = json.load(j)
-    process_fp = next(input_dir.rglob("*/processing.json"))
-    with open(process_fp, "r") as j:
-        processing = json.load(j)
     subject_fp = next(input_dir.rglob("subject.json"))
     with open(subject_fp, "r") as j:
         subject = json.load(j)
 
-    return session, data_description, processing, subject
+    return session, data_description, subject
 
 
-def get_frame_rate(processing: dict) -> float:
-    """Get the frame rate from the processing metadata
+def get_frame_rate(session: dict) -> float:
+    """Get the frame rate from the session metadata
 
     Parameters
     ----------
-    processing: dict
-        processing metadata
+    session: dict
+        session metadata
 
     Returns
     -------
     frame_rate: float
         frame rate
     """
-    if processing.get("processing_pipeline") is not None:
-        processing = processing["processing_pipeline"]
-    frame_rate = None
-    for data_proc in processing["data_processes"]:
-        if data_proc["parameters"].get("movie_frame_rate_hz", ""):
-            frame_rate = data_proc["parameters"]["movie_frame_rate_hz"]
-    if frame_rate == None:
-        raise ValueError("Frame rate not found in processing metadata")
-    return frame_rate
+    return float(session["data_processes"][0]["ophys_fovs"][0]["frame_rate"])
 
 
 def com(rois):
@@ -632,7 +619,7 @@ if __name__ == "__main__":
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
-    session, data_description, processing, subject = get_metdata(input_dir)
+    session, data_description, subject = get_metdata(input_dir)
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
     setup_logging("aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name)
@@ -650,7 +637,7 @@ if __name__ == "__main__":
     else:
         unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
 
-    frame_rate = get_frame_rate(processing)
+    frame_rate = get_frame_rate(session)
 
     output_dir = make_output_directory(output_dir, unique_id)
     # Set suite2p args.
