@@ -131,7 +131,7 @@ def write_data_process(
     ----------
     metadata: dict
         parameters from suite2p motion correction
-    raw_movie: str
+    input_fp: str
         path to raw movies
     output_fp: str
         path to motion corrected movies
