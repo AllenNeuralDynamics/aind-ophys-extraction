@@ -12,11 +12,13 @@ ARG GIT_ASKPASS
 ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
+RUN ["apt-get", "update"]
+RUN ["apt-get", "install", "-y", "vim"]
 RUN pip3 install -U --no-cache-dir \
     torch --index-url https://download.pytorch.org/whl/cpu
 
 RUN pip3 install -U --no-cache-dir \
-    aind-data-schema==0.22.0 \
+    aind-data-schema==1.1.0 \
     cellpose==3.0 \
     h5py \
     pydantic==2.8.2 \
@@ -24,4 +26,5 @@ RUN pip3 install -U --no-cache-dir \
     scikit-image \
     sparse \
     aind-ophys-utils \
-    git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output
+    git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output \
+    aind-log-utils
