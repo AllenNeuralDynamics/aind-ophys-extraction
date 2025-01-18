@@ -17,7 +17,7 @@ import h5py
 import imageio_ffmpeg
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.sparse import coo_matrix, hstack
+from scipy.sparse import coo_matrix, hstack, linalg
 import skimage
 import sparse
 import suite2p
@@ -842,14 +842,15 @@ if __name__ == "__main__":
                 for roi in suite2p_stats
             ])
             # set parameters
+            gSig = 4  # TODO: set gSig based on suite2p diameter estimate
             opts = params.CNMFParams(params_dict={'K': None,
                                                   'p': 1,
                                                   'nb': 0,
                                                   'only_init': True,
                                                   'merge_thr': 1,
                                                   'method_init': 'corr_pnr',
-                                                  'gSig': (args.gSig,) * 2,
-                                                  'gSiz': (int(round((args.gSig * 4) + 1)),) * 2,
+                                                  'gSig': (gSig,) * 2,
+                                                  'gSiz': (int(round((gSig * 4) + 1)),) * 2,
                                                   'normalize_init': False,
                                                   'center_psf': True,
                                                   'init_iter': 1,
@@ -857,7 +858,7 @@ if __name__ == "__main__":
                                                   'ssub': 1,
                                                   'min_corr': 0,
                                                   'min_pnr': 0,
-                                                  'seed_method': com(Ain, *dims)
+                                                  'seed_method': caiman.base.rois.com(Ain, *dims)
                                                  })
             # fit
             logger.info(f"running CaImAn v{caiman.__version__}")
@@ -882,7 +883,7 @@ if __name__ == "__main__":
                 coords = np.hstack(coords)  
                 
             # TODO: save background, use caiman's classifier for iscell
-            neuropil_coords, iscell = [], []
+            neuropil_coords, iscell, keys = [[]] * 3
             
     else:  # no ROIs found
         traces_roi, traces_neuropil, traces_corrected = [

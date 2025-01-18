@@ -1,7 +1,7 @@
 metadata_version: 1
-name: aind-ophys-extraction-suite2p
-description: Combines cellpose and suite2p to extract sources, i.e. ROIs and their
-  traces.
+name: aind-ophys-extraction
+description: Uses a combination of Cellpose, Suite2p, and CaImAn to perform cell detection
+  and signal extraction.
 authors:
 - name: AIND
 - name: Arielle Leon
