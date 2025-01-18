@@ -15,7 +15,7 @@ import h5py
 import imageio_ffmpeg
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.sparse import coo_matrix, hstack
+from scipy.sparse import coo_matrix, hstack, linalg
 import skimage
 import sparse
 import suite2p
