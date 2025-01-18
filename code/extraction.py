@@ -9,11 +9,15 @@ from typing import Tuple, Union
 from warnings import warn
 import sys
 
+import caiman
+from caiman.base.rois import com
+from caiman.source_extraction.cnmf import cnmf, params
 import cv2
 import h5py
 import imageio_ffmpeg
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.sparse import coo_matrix, hstack
 import skimage
 import sparse
 import suite2p
@@ -665,11 +669,22 @@ if __name__ == "__main__":
         help="Path to pretrained model or string for model type "
         "(can be user’s model).",
     )
+    # parser.add_argument(
+    #     "--use_suite2p_neuropil",
+    #     action="store_true",
+    #     help="Whether to use the fix weight provided by suite2p for neuropil \
+    #     correction. If not, we use a mutual information based method.",
+    # )
     parser.add_argument(
-        "--use_suite2p_neuropil",
-        action="store_true",
-        help="Whether to use the fix weight provided by suite2p for neuropil \
-        correction. If not, we use a mutual information based method.",
+        "--neuropil",
+        type=str,
+        default="mutualinfo",
+        help="How to model the neuropil background, and whether to perform demixing. "
+        "cnmf(-e) demix traces of overlapping ROIs via NMF, suite2p & mutualinfo do not. "
+        "cnmf: low-rank background of CNMF "
+        "cnmf-e: ring model of CNMF-E "
+        "suite2p: neuropil masks and fix weight provided by suite2p "
+        "mutualinfo: neuropil masks from suite2p, but weights based on mutual information "
     )
     parser.add_argument(
         "--contour_video",
@@ -684,7 +699,10 @@ if __name__ == "__main__":
     if next(input_dir.glob("output"), ""):
         sys.exit()
     tmp_dir = Path(args.tmp_dir).resolve()
-    session, data_description, subject = get_metdata(input_dir)
+    try:
+        session, data_description, subject = get_metdata(input_dir)
+    except StopIteration:
+        session, data_description, subject = {}, {}, {}
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
     setup_logging("aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name)
@@ -703,8 +721,10 @@ if __name__ == "__main__":
         unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
 
     frame_rate = get_frame_rate(session)
-
     output_dir = make_output_directory(output_dir, unique_id)
+    
+    # Run Cellpose via Suite2p to get ROI seeds
+    # =========================================
     # Set suite2p args.
     suite2p_args = suite2p.default_ops()
     # Overwrite the parameters for suite2p that are exposed
@@ -792,34 +812,84 @@ if __name__ == "__main__":
                     [i * np.ones(len(roi["lam"])), roi["ypix"], roi["xpix"]],
                     dtype=np.int16,
                 )
-            )
-            neuropil_coords.append(
-                np.array(
-                    [
-                        i * np.ones(len(roi["neuropil_mask"])),
-                        roi["neuropil_mask"] // dims[1],
-                        roi["neuropil_mask"] % dims[1],
-                    ],
-                    dtype=np.int16,
+                neuropil_coords.append(
+                    np.array(
+                        [
+                            i * np.ones(len(roi["neuropil_mask"])),
+                            roi["neuropil_mask"] // dims[1],
+                            roi["neuropil_mask"] % dims[1],
+                        ],
+                        dtype=np.int16,
+                    )
                 )
-            )
-        keys = list(suite2p_stats[0].keys())
-        for k in ("ypix", "xpix", "lam", "neuropil_mask"):
-            keys.remove(k)
-        stat = {}
-        for k in keys:
-            stat[k] = [s[k] for s in suite2p_stats]
-        data = np.concatenate(data)
-        coords = np.hstack(coords)
-        neuropil_coords = np.hstack(neuropil_coords)
-        stat["soma_crop"] = np.concatenate(stat["soma_crop"])
-        stat["overlap"] = np.concatenate(stat["overlap"])
+            keys = list(suite2p_stats[0].keys())
+            for k in ("ypix", "xpix", "lam", "neuropil_mask"):
+                keys.remove(k)
+            stat = {}
+            for k in keys:
+                stat[k] = [s[k] for s in suite2p_stats]
+            data = np.concatenate(data)
+            coords = np.hstack(coords)
+            neuropil_coords = np.hstack(neuropil_coords)
+            stat["soma_crop"] = np.concatenate(stat["soma_crop"])
+            stat["overlap"] = np.concatenate(stat["overlap"])
+        
+        else:
+            # Run CaImAn to update ROIs and extract traces
+            # ============================================
+            Ain = hstack([
+                coo_matrix((roi["lam"], (roi["ypix"], roi["xpix"])), shape=dims).reshape((-1,1), order="F").tocsc()
+                for roi in suite2p_stats
+            ])
+            # set parameters
+            opts = params.CNMFParams(params_dict={'K': None,
+                                                  'p': 1,
+                                                  'nb': 0,
+                                                  'only_init': True,
+                                                  'merge_thr': 1,
+                                                  'method_init': 'corr_pnr',
+                                                  'gSig': (args.gSig,) * 2,
+                                                  'gSiz': (int(round((args.gSig * 4) + 1)),) * 2,
+                                                  'normalize_init': False,
+                                                  'center_psf': True,
+                                                  'init_iter': 1,
+                                                  'tsub': 1,
+                                                  'ssub': 1,
+                                                  'min_corr': 0,
+                                                  'min_pnr': 0,
+                                                  'seed_method': com(Ain, *dims)
+                                                 })
+            # fit
+            logger.info(f"running CaImAn v{caiman.__version__}")
+            cnm = cnmf.CNMF(1, params=opts)
+            movie = h5py.File(motion_corrected_fn)["data"][:].astype("f4")
+            cnm.fit(movie)
+            e = cnm.estimates
+            assert np.allclose(linalg.norm(e.A, 2, 0), 1)
+            e.b, e.f, e.dims = None, None, dims  # required patch for next line
+            traces_corrected = e.C + e.YrA + e.A.T.dot(e.b0)[:, None]
+            traces_neuropil = e.A.T.dot(e.compute_background(caiman.movie(movie).to2DPixelxTime()))
+            traces_roi = e.C + e.YrA + traces_neuropil
+            # convert ROIs to sparse COO 3D-tensor  a la https://sparse.pydata.org/en/stable/construct.html
+            data = []
+            coords = []
+            for i in range(e.A.shape[1]):
+                roi = coo_matrix(e.A[:,i].reshape(dims, order="F").toarray(), dtype="f4")
+                data.append(roi.data)
+                coords.append(np.array([i*np.ones(len(roi.data)), roi.row, roi.col], dtype="i2"))
+            if len(data):
+                data = np.concatenate(data)
+                coords = np.hstack(coords)  
+                
+            # TODO: save background, use caiman's classifier for iscell
+            neuropil_coords, iscell = [], []
+            
     else:  # no ROIs found
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
         ] * 3
         r_values, data, coords, neuropil_coords, iscell = [[]] * 5
-        if not args.use_suite2p_neuropil:
+        if args.neuropil.lower() == "mutualinfo":
             raw_r = []
         keys = []
 
@@ -831,11 +901,12 @@ if __name__ == "__main__":
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
         f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
         f.create_dataset("traces/roi", data=traces_roi, compression="gzip")
-        f.create_dataset("traces/neuropil_rcoef", data=r_values)
-        if not args.use_suite2p_neuropil:
-            # We save the raw r values if we are not using the suite2p neuropil.
-            # This is useful for debugging purposes.
-            f.create_dataset("traces/raw_neuropil_rcoef_mutualinfo", data=raw_r)
+        if args.neuropil.lower() in ("mutualinfo", "suite2p"):
+            f.create_dataset("traces/neuropil_rcoef", data=r_values)
+            if args.neuropil.lower() == "mutualinfo":
+                # We save the raw r values if we are not using the suite2p neuropil.
+                # This is useful for debugging purposes.
+                f.create_dataset("traces/raw_neuropil_rcoef_mutualinfo", data=raw_r)
         for k in keys:
             dtype = np.array(stat[k]).dtype
             if dtype != "bool":
