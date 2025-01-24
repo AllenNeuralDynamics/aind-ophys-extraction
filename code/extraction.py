@@ -841,16 +841,17 @@ if __name__ == "__main__":
                 coo_matrix((roi["lam"], (roi["ypix"], roi["xpix"])), shape=dims).reshape((-1,1), order="F").tocsc()
                 for roi in suite2p_stats
             ])
+            cnmfe = args.neuropil.lower() == "cnmf-e"
             # set parameters
-            gSig = 4  # TODO: set gSig based on suite2p diameter estimate
+            gSig = 6  # TODO: set gSig based on suite2p diameter estimate
             opts = params.CNMFParams(params_dict={'K': None,
                                                   'p': 1,
-                                                  'nb': 0,
-                                                  'only_init': True,
+                                                  'nb': 0 if cnmfe else 2,
+                                                  'only_init': cnmfe,
                                                   'merge_thr': 1,
-                                                  'method_init': 'corr_pnr',
+                                                  'method_init': 'corr_pnr' if cnmfe else 'greedy_roi',
                                                   'gSig': (gSig,) * 2,
-                                                  'gSiz': (int(round((gSig * 4) + 1)),) * 2,
+                                                  'gSiz': (int(round(gSig * (4 if cnmfe else 2) + 1)),) * 2,
                                                   'normalize_init': False,
                                                   'center_psf': True,
                                                   'init_iter': 1,
@@ -862,15 +863,21 @@ if __name__ == "__main__":
                                                  })
             # fit
             logger.info(f"running CaImAn v{caiman.__version__}")
-            cnm = cnmf.CNMF(1, params=opts)
-            movie = h5py.File(motion_corrected_fn)["data"][:].astype("f4")
+            cnm = cnmf.CNMF(1, params=opts, Ain=None if cnmfe else (Ain > 0).toarray())
+            movie = h5py.File(input_fn)["data"][:].astype("f4")
             cnm.fit(movie)
             e = cnm.estimates
-            assert np.allclose(linalg.norm(e.A, 2, 0), 1)
-            e.b, e.f, e.dims = None, None, dims  # required patch for next line
-            traces_corrected = e.C + e.YrA + e.A.T.dot(e.b0)[:, None]
-            traces_neuropil = e.A.T.dot(e.compute_background(caiman.movie(movie).to2DPixelxTime()))
-            traces_roi = e.C + e.YrA + traces_neuropil
+            assert np.allclose(linalg.norm(e.A, 2, 0), 1)            
+            traces_corrected = (e.C + e.YrA).astype("f4")
+            if cnmfe: 
+                traces_corrected += e.A.T.dot(e.b0)[:, None]
+                e.b, e.f, e.dims = None, None, dims  # required patch for next line
+                # TODO: is there a more memory efficient version for next line?
+                traces_neuropil = e.A.astype("f4").T.dot(e.compute_background(caiman.movie(movie).to2DPixelxTime()))
+            else:
+                traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
+                traces_corrected += .8 * traces_neuropil  # TODO: check factor on more ground truth data
+            traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
             # convert ROIs to sparse COO 3D-tensor  a la https://sparse.pydata.org/en/stable/construct.html
             data = []
             coords = []
