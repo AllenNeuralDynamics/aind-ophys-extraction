@@ -1239,6 +1239,32 @@ def contour_video(
         canvas[-h:, -(w if only_raw else 3 * w) :] = frame
         writer.send(canvas)
     writer.close()
+    
+    
+def format_caiman_output(e, cnmfe, movie):
+    assert np.allclose(linalg.norm(e.A, 2, 0), 1)
+    traces_corrected = (e.C + e.YrA).astype("f4")
+    if cnmfe: 
+        traces_corrected += e.A.T.dot(e.b0)[:, None]
+        e.b, e.f = None, None  # required patch for next line
+        # TODO: is there a more memory efficient version for next line?
+        traces_neuropil = e.A.astype("f4").T.dot(e.compute_background(caiman.movie(movie).to2DPixelxTime()))
+    else:
+        traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
+        traces_corrected += .8 * traces_neuropil  # TODO: check factor on groundtruth data
+    traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
+    # convert ROIs to sparse COO 3D-tensor  a la https://sparse.pydata.org/en/stable/construct.html
+    data = []
+    coords = []
+    for i in range(e.A.shape[1]):
+        roi = coo_matrix(e.A[:,i].reshape(e.dims, order="F").toarray(), dtype="f4")
+        data.append(roi.data)
+        coords.append(np.array([i*np.ones(len(roi.data)), roi.row, roi.col], dtype="i2"))
+    if len(data):
+        data = np.concatenate(data)
+        coords = np.hstack(coords)  
+    # TODO: save background, use caiman's classifier for iscell
+    return traces_corrected, traces_neuropil, traces_roi, data, coords
 
 
 if __name__ == "__main__":
