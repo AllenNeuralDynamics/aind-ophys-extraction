@@ -840,7 +840,7 @@ if __name__ == "__main__":
     )
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
-            ax[i].text(*cm[k], str(k), color="orange", fontsize=8 * lw)
+            ax[i].text(*cm[k], str(k), color="red", fontsize=12 * lw)
     plt.savefig(
         output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
         bbox_inches="tight",
