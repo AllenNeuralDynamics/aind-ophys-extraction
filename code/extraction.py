@@ -19,6 +19,8 @@ from aind_data_schema.core.processing import DataProcess, ProcessName
 from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import max_corr_image
+from aind_data_schema.core.quality_control import (QCMetric, Status, QCStatus)
+from aind_qcportal_schema.metric_value import DropdownMetric
 
 
 def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
@@ -539,6 +541,40 @@ def contour_video(
         canvas[-h:, -(w if only_raw else 3 * w) :] = frame
         writer.send(canvas)
     writer.close()
+
+def write_qc_metrics(
+    output_dir: Path,
+    experiment_id: str,
+) -> None:
+
+    metric = QCMetric(
+        name=f"{experiment_id} Detected ROIs",
+        description="",
+        reference=str(f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"),
+        status_history=[
+            QCStatus(
+                evaluator='Automated',
+                timestamp=dt.now(),
+                status=Status.PASS
+            )
+        ],
+        value=DropdownMetric(
+            value="All ROIs detected",
+            options=[
+                "All ROIs detected",
+                "Undetected ROIs present"
+            ],
+            status=[
+                Status.PASS,
+                Status.FAIL,
+            ]
+        )
+    )
+
+    with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
+        json.dump(json.loads(metric.model_dump_json()), f, indent=4)
+
+
 
 
 if __name__ == "__main__":
