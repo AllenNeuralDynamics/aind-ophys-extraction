@@ -892,3 +892,5 @@ if __name__ == "__main__":
                 traces_corrected,
                 fs=frame_rate,
             )
+
+    write_qc_metrics(output_dir, unique_id)
