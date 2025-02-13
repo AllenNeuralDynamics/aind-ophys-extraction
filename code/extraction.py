@@ -20,7 +20,7 @@ from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import max_corr_image
 from aind_data_schema.core.quality_control import (QCMetric, Status, QCStatus)
-from aind_qcportal_schema.metric_value import DropdownMetric
+from aind_qcportal_schema.metric_value import CheckboxMetric
 
 
 def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
