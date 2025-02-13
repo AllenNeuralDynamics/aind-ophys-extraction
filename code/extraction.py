@@ -545,8 +545,21 @@ def contour_video(
 def write_qc_metrics(
     output_dir: Path,
     experiment_id: str,
+    num_rois: int
 ) -> None:
 
+    # Build options and statuses
+    options = []
+    statuses = []
+
+    options.append("Missing ROIs")
+    statuses.append(Statis.FAIL)
+
+    for i in range(num_rois):
+        options.append(f"ROI {i} invalid")
+        statuses.append(Status.FAIL)
+
+    # Define metric
     metric = QCMetric(
         name=f"{experiment_id} Detected ROIs",
         description="",
@@ -558,16 +571,10 @@ def write_qc_metrics(
                 status=Status.PASS
             )
         ],
-        value=DropdownMetric(
-            value="All ROIs detected",
-            options=[
-                "All ROIs detected",
-                "Undetected ROIs present"
-            ],
-            status=[
-                Status.PASS,
-                Status.FAIL,
-            ]
+        value=CheckboxMetric(
+            value=[],
+            options=options,
+            status=statuses
         )
     )
 
@@ -893,4 +900,4 @@ if __name__ == "__main__":
                 fs=frame_rate,
             )
 
-    write_qc_metrics(output_dir, unique_id)
+    write_qc_metrics(output_dir, unique_id, num_rois=rois.shape[0])
