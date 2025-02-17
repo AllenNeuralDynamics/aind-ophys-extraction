@@ -6,6 +6,7 @@ from datetime import datetime as dt
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Tuple, Union
+from warnings import warn
 
 import cv2
 import h5py
@@ -16,10 +17,10 @@ import skimage
 import sparse
 import suite2p
 from aind_data_schema.core.processing import DataProcess, ProcessName
+from aind_data_schema.core.quality_control import QCMetric, QCStatus, Status
 from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import max_corr_image
-from aind_data_schema.core.quality_control import (QCMetric, Status, QCStatus)
 from aind_qcportal_schema.metric_value import CheckboxMetric
 
 
@@ -55,7 +56,9 @@ def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[
     raw_trace[np.isnan(raw_trace)] = 0
     for r_i, r_temp in enumerate(r_iters):
         Fc = raw_trace - r_temp * neuropil_trace
-        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(Fc, neuropil_trace)
+        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(
+            Fc, neuropil_trace
+        )
     min_ind = np.argmin(mi_iters)
     r_best = r_iters[min_ind]
     return r_best, mi_iters, r_iters
@@ -336,7 +339,8 @@ def get_contours(rois, thr=0.2, thr_method="max"):
 
     for i in range(nr):
         pars = dict()
-        # we compute the cumulative sum of the energy of the Ath component that has been ordered from least to highest
+        # we compute the cumulative sum of the energy of the Ath 
+        # component that has been ordered from least to highest
         patch_data = A.data[A.indptr[i] : A.indptr[i + 1]]
         indx = np.argsort(patch_data)[::-1]
         if thr_method == "nrg":
@@ -359,7 +363,9 @@ def get_contours(rois, thr=0.2, thr_method="max"):
             if thr_method != "max":
                 warn("Unknown threshold method. Choosing max")
             Bvec = np.zeros(d)
-            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = patch_data / patch_data.max()
+            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
+                patch_data / patch_data.max()
+            )
 
         Bmat = np.reshape(Bvec, dims, order="F")
         pars["coordinates"] = []
@@ -486,7 +492,6 @@ def contour_video(
     font = cv2.FONT_HERSHEY_SIMPLEX
     magnify = max(500 // dims[0], 1)
     h, w = dims[0] * magnify, dims[1] * magnify
-    textheight = cv2.getTextSize("True", font, h / 600, max(h // 200, 1))[0][1]
     canvas_size = (
         int(np.ceil(h * 1.08 / 16)) * 16,
         # int(np.ceil(((w if only_raw else 3 * w) + 1.3 * textheight)  / 16)) * 16,
@@ -542,11 +547,19 @@ def contour_video(
         writer.send(canvas)
     writer.close()
 
-def write_qc_metrics(
-    output_dir: Path,
-    experiment_id: str,
+
+def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
+    """Write the QC metrics to a json file
+
+    Parameters
+    ----------
+    output_dir: Path
+        output directory
+    experiment_id: str
+        unique plane id
     num_rois: int
-) -> None:
+        number of ROIs detected in this plane
+    """
 
     # Build options and statuses
     options = []
@@ -563,31 +576,25 @@ def write_qc_metrics(
     metric = QCMetric(
         name=f"{experiment_id} Detected ROIs",
         description="",
-        reference=str(f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"),
+        reference=str(
+            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
+        ),
         status_history=[
-            QCStatus(
-                evaluator='Automated',
-                timestamp=dt.now(),
-                status=Status.PASS
-            )
+            QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
         ],
-        value=CheckboxMetric(
-            value=[],
-            options=options,
-            status=statuses
-        )
+        value=CheckboxMetric(value=[], options=options, status=statuses),
     )
 
     with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
         json.dump(json.loads(metric.model_dump_json()), f, indent=4)
 
 
-
-
 if __name__ == "__main__":
     start_time = dt.now()
     # Set the log level and name the logger
-    logger = logging.getLogger("Source extraction using Suite2p with or without Cellpose")
+    logger = logging.getLogger(
+        "Source extraction using Suite2p with or without Cellpose"
+    )
     logger.setLevel(logging.INFO)
 
     # Parse command-line arguments
@@ -673,7 +680,9 @@ if __name__ == "__main__":
     session, data_description, subject = get_metdata(input_dir)
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
-    setup_logging("aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name)
+    setup_logging(
+        "aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name
+    )
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
@@ -761,8 +770,11 @@ if __name__ == "__main__":
             traces_corrected = traces_roi - suite2p_args["neucoeff"] * traces_neuropil
             r_values = suite2p_args["neucoeff"] * np.ones(traces_roi.shape[0])
         else:
-            traces_corrected, r_values, raw_r = get_FC_from_r(traces_roi, traces_neuropil)
-        # convert ROIs to sparse COO 3D-tensor a la https://sparse.pydata.org/en/stable/construct.html
+            traces_corrected, r_values, raw_r = get_FC_from_r(
+                traces_roi, traces_neuropil
+            )
+        # convert ROIs to sparse COO 3D-tensor
+        # a la https://sparse.pydata.org/en/stable/construct.html
         data = []
         coords = []
         neuropil_coords = []
@@ -830,7 +842,9 @@ if __name__ == "__main__":
         f.create_dataset("rois/data", data=data, compression="gzip")
         shape = np.array([len(traces_roi), *dims], dtype=np.int16)
         f.create_dataset("rois/shape", data=shape)  # neurons x height x width
-        f.create_dataset("rois/neuropil_coords", data=neuropil_coords, compression="gzip")
+        f.create_dataset(
+            "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
+        )
         # cellpose
         if cellpose_path:
             with np.load(cellpose_path) as cp:
@@ -840,11 +854,11 @@ if __name__ == "__main__":
             logging.warning("No cellpose output found.")
 
         # classifier
-        f.create_dataset(f"iscell", data=iscell, dtype="f4")
+        f.create_dataset("iscell", data=iscell, dtype="f4")
         # summary images
         ops = np.load(ops_path, allow_pickle=True)[()]
-        f.create_dataset(f"meanImg", data=ops["meanImg"], compression="gzip")
-        f.create_dataset(f"maxImg", data=ops["max_proj"], compression="gzip")
+        f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
+        f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
     write_data_process(
         vars(args),
