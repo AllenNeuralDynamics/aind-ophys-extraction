@@ -553,7 +553,7 @@ def write_qc_metrics(
     statuses = []
 
     options.append("Missing ROIs")
-    statuses.append(Statis.FAIL)
+    statuses.append(Status.FAIL)
 
     for i in range(num_rois):
         options.append(f"ROI {i} invalid")
