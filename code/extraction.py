@@ -1127,10 +1127,11 @@ if __name__ == "__main__":
         if ops_path:
             ops = np.load(ops_path, allow_pickle=True)[()]
         else:
-            ops = {
-                "meanImg": mean_image(motion_corrected_fn),
-                "max_proj": max_image(motion_corrected_fn),
-            }
+            with h5py.File(str(motion_corrected_fn), "r") as open_vid:
+                ops = {
+                    "meanImg": mean_image(open_vid["data"]),
+                    "max_proj": max_image(open_vid["data"]),
+                }
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
