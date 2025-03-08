@@ -19,8 +19,7 @@ import suite2p
 from aind_data_schema.core.processing import DataProcess, ProcessName
 from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
-from aind_ophys_utils.summary_images import (max_corr_image, max_image,
-                                             mean_image)
+from aind_ophys_utils.summary_images import max_corr_image, max_image, mean_image
 from caiman.source_extraction.cnmf import cnmf, params
 from scipy.sparse import coo_matrix, hstack, linalg
 
@@ -475,14 +474,16 @@ def contour_video(
         mov[:: max(1, len(mov) // 100)], (lower_quantile, upper_quantile)
     )
 
-    def scale(m): return np.array(
-        ThreadPool(n_jobs).map(
-            lambda frame: np.clip(
-                255 * (frame - minmov) / (maxmov - minmov), 0, 255
-            ).astype(np.uint8),
-            m,
+    def scale(m):
+        return np.array(
+            ThreadPool(n_jobs).map(
+                lambda frame: np.clip(
+                    255 * (frame - minmov) / (maxmov - minmov), 0, 255
+                ).astype(np.uint8),
+                m,
+            )
         )
-    )
+
     if only_raw:
         mov = scale(mov)
     else:
@@ -559,6 +560,40 @@ def contour_video(
         canvas[-h:, -(w if only_raw else 3 * w):] = frame
         writer.send(canvas)
     writer.close()
+
+
+def create_mmap_file(input_fn, unique_id, tmp_dir):
+    with h5py.File(input_fn) as fin:
+        data = fin["data"]
+        if data.nbytes < 1e9:
+            fname_new = caiman.save_memmap(
+                [str(input_fn)],
+                var_name_hdf5="data",
+                order="C",
+                base_name=unique_id,
+            )
+        else:
+            chunksize = 50
+            chunkfiles = [
+                tmp_dir + f"/chunk{k}.h5" for k in range(0, data.shape[0], chunksize)
+            ]
+
+            def write_chunk(k):
+                with h5py.File(tmp_dir + f"/chunk{k}.h5", "w") as f:
+                    f.create_dataset("data", data=data[k: k + chunksize])
+
+            with Pool() as pool:
+                pool.map(write_chunk, range(0, data.shape[0], chunksize))
+                fname_new = caiman.save_memmap(
+                    chunkfiles,
+                    var_name_hdf5="data",
+                    order="C",
+                    dview=pool,
+                    base_name=unique_id,
+                    n_chunks=16,
+                )
+                pool.map(os.remove, chunkfiles)  # remove temporary files
+    return fname_new
 
 
 def format_caiman_output(e, cnmfe, movie):
@@ -684,7 +719,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--K",
         type=int,
-        default=20,
+        default=5,
         help="Number of components to be found "
         "(per patch or whole FOV depending on whether 'rf=None').",
     )
@@ -739,9 +774,30 @@ if __name__ == "__main__":
     parser.add_argument(
         "--min_pnr",
         type=float,
-        default=5,
+        default=4,
         help="Minimum value of psnr image for determining a candidate "
         "component during 'corr_pnr'.",
+    )
+    parser.add_argument(
+        "--snr_thr",
+        type=float,
+        default=2,
+        help="Trace SNR threshold for component evaluation. "
+        "Traces with SNR above this will get accepted.",
+    )
+    parser.add_argument(
+        "--rval_thr",
+        type=float,
+        default=0.8,
+        help="Spatial correlation threshold for component evaluation. "
+        "Components with correlation higher than this will get accepted.",
+    )
+    parser.add_argument(
+        "--cnn_thr",
+        type=float,
+        default=0.9,
+        help="CNN classifier threshold for component evaluation. "
+        "Components with score higher than this will get accepted.",
     )
     parser.add_argument(
         "--contour_video",
@@ -788,7 +844,7 @@ if __name__ == "__main__":
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
     setup_logging(
-        "aind-ophys-extraction-suite2p", mouse_id=subject_id, session_name=name
+        "aind-ophys-extraction", subject_id=subject_id, asset_name=name
     )
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
@@ -808,6 +864,8 @@ if __name__ == "__main__":
     frame_rate = get_frame_rate(session)
     output_dir = make_output_directory(output_dir, unique_id)
 
+    n_jobs = tmp if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
+
     if args.init in ("greedy_roi", "corr_pnr"):
         # Run CaImAn
         # ==========
@@ -816,43 +874,13 @@ if __name__ == "__main__":
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
         os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
         os.environ["CAIMAN_TEMP"] = args.tmp_dir
-        # whther to use CNMF-E ring model (or CNMF low rank model)
+        # whether to use CNMF-E ring model (or CNMF low rank model)
         cnmfe = args.neuropil == "cnmf-e"
         # create mmap file
-        with h5py.File(input_fn) as fin:
-            data = fin["data"]
-            if data.nbytes < 1e9:
-                fname_new = caiman.save_memmap(
-                    [str(input_fn)],
-                    var_name_hdf5="data",
-                    order="C",
-                    base_name=unique_id,
-                )
-            else:
-                chunksize = 50
-                chunkfiles = [
-                    args.tmp_dir + f"/chunk{k}.h5"
-                    for k in range(0, data.shape[0], chunksize)
-                ]
-
-                def write_chunk(k):
-                    with h5py.File(args.tmp_dir + f"/chunk{k}.h5", "w") as f:
-                        f.create_dataset("data", data=data[k: k + chunksize])
-
-                with Pool() as pool:
-                    pool.map(write_chunk, range(0, data.shape[0], chunksize))
-                    fname_new = caiman.save_memmap(
-                        chunkfiles,
-                        var_name_hdf5="data",
-                        order="C",
-                        dview=pool,
-                        base_name=unique_id,
-                        n_chunks=16,
-                    )
-                    pool.map(os.remove, chunkfiles)  # remove temporary files
+        fname_new = create_mmap_file(input_fn, unique_id, args.tmp_dir)
         # now load the file
         Yr, dims, T = caiman.load_memmap(fname_new)
-        images = np.reshape(Yr.T, [T] + list(dims), order="F")
+        movie = np.reshape(Yr.T, [T] + list(dims), order="F")
         # Set params
         gSig = args.diameter / 2
         params_dict = {
@@ -874,21 +902,27 @@ if __name__ == "__main__":
             "normalize_init": not cnmfe,
             "center_psf": cnmfe,
             "ring_size_factor": 1.5 if cnmfe else None,
+            "min_SNR": args.snr_thr,
+            "rval_thr": args.rval_thr,
+            "use_cnn": args.cnn_thr > 0,
+            "min_cnn_thr": args.cnn_thr,
         }
         opts = params.CNMFParams(params_dict=params_dict)
-        n_jobs = tmp if (tmp := os.environ.get(
-            "CO_CPUS")) is None else int(tmp)
         with Pool(n_jobs) as pool:
             cnm = cnmf.CNMF(n_processes=pool._processes,
                             params=opts, dview=pool)
-            cnm.fit(images)
+            cnm.fit(movie)
             if not cnmfe:
-                cnm = cnm.refit(images, dview=pool)
+                cnm = cnm.refit(movie, dview=pool)
+            cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
+            cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
+        iscell = np.zeros((cnm.estimates.A.shape[1], 2), dtype="f4")
+        iscell[cnm.estimates.idx_components, 0] = 1
+        iscell[:, 1] = cnm.estimates.cnn_preds
         traces_corrected, traces_neuropil, traces_roi, data, coords = (
-            format_caiman_output(cnm.estimates, cnmfe, images)
+            format_caiman_output(cnm.estimates, cnmfe, movie)
         )
-        # TODO: save background, use caiman's classifier for iscell
-        neuropil_coords, iscell, keys = [[]] * 3
+        neuropil_coords, keys = [], []
 
     else:
 
@@ -1024,6 +1058,7 @@ if __name__ == "__main__":
             else:
                 # Run CaImAn to update ROIs and extract traces
                 # ============================================
+                logger.info(f"running CaImAn v{caiman.__version__}")
                 Ain = hstack(
                     [
                         coo_matrix(
@@ -1054,21 +1089,38 @@ if __name__ == "__main__":
                         "min_corr": 0,
                         "min_pnr": 0,
                         "seed_method": caiman.base.rois.com(Ain, *dims),
+                        "min_SNR": args.snr_thr,
+                        "rval_thr": args.rval_thr,
+                        "use_cnn": args.cnn_thr > 0,
+                        "min_cnn_thr": args.cnn_thr,
                     }
                 )
+                # create mmap file
+                fname_new = create_mmap_file(input_fn, unique_id, args.tmp_dir)
+                # now load the file
+                Yr, dims, T = caiman.load_memmap(fname_new)
+                movie = np.reshape(Yr.T, [T] + list(dims), order="F")
                 # fit
-                logger.info(f"running CaImAn v{caiman.__version__}")
-                cnm = cnmf.CNMF(
-                    1, params=opts, Ain=None if cnmfe else (Ain > 0).toarray()
-                )
-                movie = h5py.File(input_fn)["data"][:].astype("f4")
-                cnm.fit(movie)
-                cnm.estimates.dims = dims
+                with Pool(n_jobs) as pool:
+                    cnm = cnmf.CNMF(
+                        n_processes=pool._processes,
+                        dview=pool,
+                        params=opts,
+                        Ain=None if cnmfe else (Ain > 0).toarray(),
+                    )
+                    cnm.fit(movie)
+                    cnm.estimates.dims = dims
+                    cnm.params.init["gSig"] = tuple(
+                        map(int, cnm.params.init["gSig"]))
+                    cnm.estimates.evaluate_components(
+                        movie, cnm.params, dview=pool)
+                iscell = np.zeros((cnm.estimates.A.shape[1], 2), dtype="f4")
+                iscell[cnm.estimates.idx_components, 0] = 1
+                iscell[:, 1] = cnm.estimates.cnn_preds
                 traces_corrected, traces_neuropil, traces_roi, data, coords = (
                     format_caiman_output(cnm.estimates, cnmfe, movie)
                 )
-                # TODO: save background, use caiman's classifier for iscell
-                neuropil_coords, iscell, keys = [[]] * 3
+                neuropil_coords, keys = [], []
 
         else:  # no ROIs found
             traces_roi, traces_neuropil, traces_corrected = [
@@ -1158,8 +1210,8 @@ if __name__ == "__main__":
         vmin, vmax = np.nanpercentile(img, (1, 99))
         ax[i].imshow(img, interpolation=None,
                      cmap="gray", vmin=vmin, vmax=vmax)
-        for c in coordinates:
-            ax[i].plot(*c["coordinates"].T, c="orange", lw=lw)
+        for c, good in zip(coordinates, iscell[:, 0]):
+            ax[i].plot(*c["coordinates"].T, c="orange" if good else "r", lw=lw)
         ax[i].axis("off")
         ax[i].set_title(
             ("mean image", "max image", "correlation image")[i],
@@ -1173,7 +1225,9 @@ if __name__ == "__main__":
     )
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
-            ax[i].text(*cm[k], str(k), color="orange", fontsize=8 * lw)
+            ax[i].text(
+                *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
+            )
     plt.savefig(
         output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
         bbox_inches="tight",
