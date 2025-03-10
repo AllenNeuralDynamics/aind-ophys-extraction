@@ -741,7 +741,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--stride",
         type=int,
-        default=20,
+        default=18,
         help="Overlap between neighboring patches in pixels.",
     )
     parser.add_argument(
@@ -781,14 +781,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--snr_thr",
         type=float,
-        default=2,
+        default=1.5,
         help="Trace SNR threshold for component evaluation. "
         "Traces with SNR above this will get accepted.",
     )
     parser.add_argument(
         "--rval_thr",
         type=float,
-        default=0.8,
+        default=0.6,
         help="Spatial correlation threshold for component evaluation. "
         "Components with correlation higher than this will get accepted.",
     )
@@ -797,7 +797,8 @@ if __name__ == "__main__":
         type=float,
         default=0.9,
         help="CNN classifier threshold for component evaluation. "
-        "Components with score higher than this will get accepted.",
+        "Components with score higher than this will get accepted. "
+        "If set to 0 the CNN classifier won't be used.",
     )
     parser.add_argument(
         "--contour_video",
@@ -843,9 +844,8 @@ if __name__ == "__main__":
         session, data_description, subject = {}, {}, {}
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
-    setup_logging(
-        "aind-ophys-extraction", subject_id=subject_id, asset_name=name
-    )
+    setup_logging("aind-ophys-extraction",
+                  subject_id=subject_id, asset_name=name)
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
@@ -918,7 +918,9 @@ if __name__ == "__main__":
             cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
         iscell = np.zeros((cnm.estimates.A.shape[1], 2), dtype="f4")
         iscell[cnm.estimates.idx_components, 0] = 1
-        iscell[:, 1] = cnm.estimates.cnn_preds
+        iscell[:, 1] = (
+            cnm.estimates.cnn_preds if cnm.params.quality["use_cnn"] else np.nan
+        )
         traces_corrected, traces_neuropil, traces_roi, data, coords = (
             format_caiman_output(cnm.estimates, cnmfe, movie)
         )
