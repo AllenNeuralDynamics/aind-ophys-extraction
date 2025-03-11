@@ -914,7 +914,9 @@ if __name__ == "__main__":
     else:
         motion_corrected_fn = input_fn
     if not data_description or "multiplane" in data_description.get("name", ""):
-        unique_id = motion_corrected_fn.parent.parent.name
+        unique_id = motion_corrected_fn.name.split("_decrosstalk")[0].split(
+            "_registered"
+        )[0]
     else:
         unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
 
