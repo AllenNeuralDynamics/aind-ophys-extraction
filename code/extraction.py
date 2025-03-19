@@ -282,7 +282,15 @@ def get_frame_rate(session: dict) -> float:
     frame_rate: float
         frame rate
     """
-    return float(session["data_streams"][0]["ophys_fovs"][0]["frame_rate"])
+    frame_rate_hz = None
+    for i in session.get("data_streams", ""):
+        frame_rate_hz = [j["frame_rate"] for j in i["ophys_fovs"]]
+        frame_rate_hz = frame_rate_hz[0]
+        if frame_rate_hz:
+            break
+    if isinstance(frame_rate_hz, str):
+        frame_rate_hz = float(frame_rate_hz)
+    return frame_rate_hz
 
 
 def com(rois):
