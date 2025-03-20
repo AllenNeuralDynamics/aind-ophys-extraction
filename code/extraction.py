@@ -7,6 +7,7 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Tuple, Union
 from warnings import warn
+import sys
 
 import cv2
 import h5py
@@ -678,6 +679,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
+    if next(input_dir.glob("output"), ""):
+        sys.exit()
     tmp_dir = Path(args.tmp_dir).resolve()
     session, data_description, subject = get_metdata(input_dir)
     subject_id = subject.get("subject_id", "")
