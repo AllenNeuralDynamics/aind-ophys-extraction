@@ -268,7 +268,7 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     return session, data_description, subject
 
 
-def get_frame_rate(session: dict): -> float:
+def get_frame_rate(session: dict) -> float:
     """Attempt to pull frame rate from session.json
     Returns none if frame rate not in session.json
 
