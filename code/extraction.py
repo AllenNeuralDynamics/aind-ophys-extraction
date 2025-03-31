@@ -268,8 +268,9 @@ def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
     return session, data_description, subject
 
 
-def get_frame_rate(session: dict) -> float:
-    """Get the frame rate from the session metadata
+def get_frame_rate(session: dict): -> float:
+    """Attempt to pull frame rate from session.json
+    Returns none if frame rate not in session.json
 
     Parameters
     ----------
@@ -279,13 +280,12 @@ def get_frame_rate(session: dict) -> float:
     Returns
     -------
     frame_rate: float
-        frame rate
+        frame rate in Hz
     """
     frame_rate_hz = None
     for i in session.get("data_streams", ""):
-        frame_rate_hz = [j["frame_rate"] for j in i["ophys_fovs"] if j["frame_rate"]]
-        frame_rate_hz = frame_rate_hz[0]
-        if frame_rate_hz:
+        if i.get("ophys_fovs", ""):
+            frame_rate_hz = i["ophys_fovs"][0]["frame_rate"]
             break
     if isinstance(frame_rate_hz, str):
         frame_rate_hz = float(frame_rate_hz)
