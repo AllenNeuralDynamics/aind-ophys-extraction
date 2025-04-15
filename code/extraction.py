@@ -562,10 +562,74 @@ def contour_video(
     writer.close()
 
 
-def create_mmap_file(input_fn, unique_id, tmp_dir):
-    with h5py.File(input_fn) as fin:
+def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) -> str:
+    """
+    Create a Virtual Dataset (VDS) for a specific chunk of the input data.
+
+    Parameters
+    ----------
+    start : int
+        The starting index of the chunk in the input dataset.
+    chunksize : int
+        The number of rows in the chunk.
+    input_fn : str
+        Path to the input HDF5 file containing the source dataset.
+    tmp_dir : str
+        Directory where the temporary VDS file for the chunk will be created.
+
+    Returns
+    -------
+    str
+        The path to the created VDS file for the chunk.
+    """
+    with h5py.File(input_fn, "r") as fin:
+        data = fin["data"]
+        end = min(start + chunksize, data.shape[0])
+        # Define the virtual layout for this chunk
+        layout = h5py.VirtualLayout(
+            shape=(end - start, *data.shape[1:]), dtype=data.dtype
+        )
+        vsource = h5py.VirtualSource(input_fn, "data", shape=data.shape)
+        layout[:] = vsource[start:end]
+        # Create a VDS file for this chunk
+        vds_file = os.path.join(tmp_dir, f"chunk_{start}.h5")
+        with h5py.File(vds_file, "w") as fout:
+            fout.create_virtual_dataset("data", layout)
+    return vds_file
+
+
+def create_mmap_file(
+    input_fn: str,
+    unique_id: str,
+    tmp_dir: str,
+    chunksize: int = 500,
+    n_chunks: int = 100,
+) -> str:
+    """
+    Create a memory-mapped file from input data.
+
+    Parameters
+    ----------
+    input_fn : str
+        Path to the input HDF5 file containing the source dataset.
+    unique_id : str
+        Unique identifier for the output memory-mapped file.
+    tmp_dir : str
+        Directory where temporary chunk files or virtual datasets will be created.
+    chunksize : int, optional
+        The number of frames in each chunk (default is 500).
+    n_chunks : int, optional
+        The number of chunks to use when combining the memory-mapped file (default is 100).
+
+    Returns
+    -------
+    str
+        The path to the created memory-mapped file.
+    """
+    with h5py.File(input_fn, "r") as fin:
         data = fin["data"]
         if data.nbytes < 1e9:
+            logging.info("Data is small, saving directly as a memory-mapped file.")
             fname_new = caiman.save_memmap(
                 [str(input_fn)],
                 var_name_hdf5="data",
@@ -573,26 +637,29 @@ def create_mmap_file(input_fn, unique_id, tmp_dir):
                 base_name=unique_id,
             )
         else:
-            chunksize = 50
-            chunkfiles = [
-                tmp_dir + f"/chunk{k}.h5" for k in range(0, data.shape[0], chunksize)
-            ]
-
-            def write_chunk(k):
-                with h5py.File(tmp_dir + f"/chunk{k}.h5", "w") as f:
-                    f.create_dataset("data", data=data[k: k + chunksize])
-
+            logging.info("Data is large, splitting into chunks.")
             with Pool() as pool:
-                pool.map(write_chunk, range(0, data.shape[0], chunksize))
-                fname_new = caiman.save_memmap(
-                    chunkfiles,
-                    var_name_hdf5="data",
-                    order="C",
-                    dview=pool,
-                    base_name=unique_id,
-                    n_chunks=16,
-                )
-                pool.map(os.remove, chunkfiles)  # remove temporary files
+                try:
+                    chunkfiles = pool.starmap(
+                        create_chunk_vds,
+                        [
+                            (start, chunksize, input_fn, tmp_dir)
+                            for start in range(0, data.shape[0], chunksize)
+                        ],
+                    )
+                    logging.info(f"Created {len(chunkfiles)} chunk files.")
+                    fname_new = caiman.save_memmap(
+                        chunkfiles,
+                        var_name_hdf5="data",
+                        order="C",
+                        dview=pool,
+                        base_name=unique_id,
+                        n_chunks=n_chunks,
+                    )
+                    logging.info("Memory-mapped file created successfully.")
+                finally:
+                    logging.info("Cleaning up temporary chunk files.")
+                    pool.map(os.remove, chunkfiles)
     return fname_new
 
 
@@ -835,6 +902,11 @@ if __name__ == "__main__":
                      "max")[int(args.init) - 1]
     print(args.init)
 
+    # set env variables for CaImAn
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+    os.environ["CAIMAN_TEMP"] = args.tmp_dir
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
@@ -871,11 +943,6 @@ if __name__ == "__main__":
     if args.init in ("greedy_roi", "corr_pnr"):
         # Run CaImAn
         # ==========
-        # set env variables
-        os.environ["MKL_NUM_THREADS"] = "1"
-        os.environ["OPENBLAS_NUM_THREADS"] = "1"
-        os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-        os.environ["CAIMAN_TEMP"] = args.tmp_dir
         # whether to use CNMF-E ring model (or CNMF low rank model)
         cnmfe = args.neuropil == "cnmf-e"
         # create mmap file
