@@ -50,8 +50,7 @@ def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[
     r_iters : np.ndarray
         1D array of r values tested.
     """
-    r_iters = np.arange(
-        r_test_range[0], r_test_range[1] + resolution, resolution)
+    r_iters = np.arange(r_test_range[0], r_test_range[1] + resolution, resolution)
     mi_iters = np.zeros(len(r_iters))
     neuropil_trace[np.isnan(neuropil_trace)] = 0
     raw_trace[np.isnan(raw_trace)] = 0
@@ -90,8 +89,7 @@ def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
     r_values = np.zeros(raw_trace.shape[0])
     FCs = np.zeros_like(raw_trace)
     for roi in range(raw_trace.shape[0]):
-        r_values[roi], _, _ = get_r_from_min_mi(
-            raw_trace[roi], neuropil_trace[roi])
+        r_values[roi], _, _ = get_r_from_min_mi(raw_trace[roi], neuropil_trace[roi])
     mean_r = np.mean(r_values[r_values < 1])
     if len(np.where(r_values < 1)[0]) < min_r_count:
         mean_r = 0.8
@@ -196,12 +194,10 @@ def create_virtual_dataset(
         data_shape = f["data"].shape
         dtype = f["data"].dtype
         vsource = h5py.VirtualSource(f["data"])
-        layout = h5py.VirtualLayout(
-            shape=(frames_length, *data_shape[1:]), dtype=dtype)
+        layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
         start = 0
         for loc in frame_locations:
-            layout[start: start + loc[1] - loc[0] +
-                   1] = vsource[loc[0]: loc[1] + 1]
+            layout[start : start + loc[1] - loc[0] + 1] = vsource[loc[0] : loc[1] + 1]
             start += loc[1] - loc[0] + 1
         h5_file = temp_dir / h5_file.name
         with h5py.File(h5_file, "w") as f:
@@ -345,7 +341,7 @@ def get_contours(rois, thr=0.2, thr_method="max"):
         pars = dict()
         # we compute the cumulative sum of the energy of the Ath component
         # that has been ordered from least to highest
-        patch_data = A.data[A.indptr[i]: A.indptr[i + 1]]
+        patch_data = A.data[A.indptr[i] : A.indptr[i + 1]]
         indx = np.argsort(patch_data)[::-1]
         if thr_method == "nrg":
             cumEn = np.cumsum(patch_data[indx] ** 2)
@@ -362,12 +358,12 @@ def get_contours(rois, thr=0.2, thr_method="max"):
                 cumEn /= cumEn[-1]
                 Bvec = np.ones(d)
                 # we put it in a similar matrix
-                Bvec[A.indices[A.indptr[i]: A.indptr[i + 1]][indx]] = cumEn
+                Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]][indx]] = cumEn
         else:
             if thr_method != "max":
                 logging.warning("Unknown threshold method. Choosing max")
             Bvec = np.zeros(d)
-            Bvec[A.indices[A.indptr[i]: A.indptr[i + 1]]] = (
+            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
                 patch_data / patch_data.max()
             )
 
@@ -384,16 +380,13 @@ def get_contours(rois, thr=0.2, thr_method="max"):
                     if num_close_coords == 0:
                         # case angle
                         newpt = np.round(vtx[-1, :] / [d2, d1]) * [d2, d1]
-                        vtx = np.concatenate(
-                            (vtx, newpt[np.newaxis, :]), axis=0)
+                        vtx = np.concatenate((vtx, newpt[np.newaxis, :]), axis=0)
                     else:
                         # case one is border
                         vtx = np.concatenate((vtx, vtx[0, np.newaxis]), axis=0)
-                v = np.concatenate(
-                    (v, vtx, np.atleast_2d([np.nan, np.nan])), axis=0)
+                v = np.concatenate((v, vtx, np.atleast_2d([np.nan, np.nan])), axis=0)
 
-            pars["coordinates"] = v if len(
-                dims) == 2 else (pars["coordinates"] + [v])
+            pars["coordinates"] = v if len(dims) == 2 else (pars["coordinates"] + [v])
         pars["CoM"] = np.squeeze(cm[i, :])
         pars["neuron_id"] = i + 1
         coordinates.append(pars)
@@ -410,8 +403,7 @@ def contour_video(
     lower_quantile: float = 0.02,
     upper_quantile: float = 0.9975,
     only_raw: bool = False,
-    n_jobs: int = None if (tmp := os.environ.get(
-        "CO_CPUS")) is None else int(tmp),
+    n_jobs: int = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp),
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
@@ -463,11 +455,9 @@ def contour_video(
         ret, thresh = cv2.threshold(
             (m > m.max() / 10).astype(np.uint8), 0, 1, cv2.THRESH_BINARY
         )
-        contours = cv2.findContours(
-            thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)[-2]
+        contours = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)[-2]
         for contour in contours:
-            cv2.drawContours(img_contours, contour, -1,
-                             rgb, max(max(dims) // 200, 1))
+            cv2.drawContours(img_contours, contour, -1, rgb, max(max(dims) // 200, 1))
     # assemble movie tiles
     mov = downsample_array(data, downscale, 1, n_jobs=n_jobs)
     minmov, maxmov = np.nanquantile(
@@ -491,8 +481,7 @@ def contour_video(
             dims[0], 3 * dims[1], -1
         )
         reconstructed = np.tensordot(
-            downsample_array(traces.T, downscale, 1,
-                             n_jobs=n_jobs).astype("f4"),
+            downsample_array(traces.T, downscale, 1, n_jobs=n_jobs).astype("f4"),
             rois,
             1,
         )
@@ -557,7 +546,7 @@ def contour_video(
             frame = cv2.resize(frame, (0, 0), fx=magnify, fy=magnify)
         frame = np.repeat(frame[..., None], 3, 2)
         frame[is_contours] = img_contours[is_contours]
-        canvas[-h:, -(w if only_raw else 3 * w):] = frame
+        canvas[-h:, -(w if only_raw else 3 * w) :] = frame
         writer.send(canvas)
     writer.close()
 
@@ -663,16 +652,34 @@ def create_mmap_file(
     return fname_new
 
 
-def format_caiman_output(e, cnmfe, movie):
+def format_caiman_output(e, cnmfe, Yr):
     assert np.allclose(linalg.norm(e.A, 2, 0), 1)
     traces_corrected = (e.C + e.YrA).astype("f4")
     if cnmfe:
-        traces_corrected += e.A.T.dot(e.b0)[:, None]
-        e.b, e.f = None, None  # required patch for next line
-        # TODO: is there a more memory efficient version for next line?
-        traces_neuropil = e.A.astype("f4").T.dot(
-            e.compute_background(caiman.movie(movie).to2DPixelxTime())
-        )
+        Atb0 = e.A.T.dot(e.b0)[:, None]
+        traces_corrected += Atb0
+        ssub_B = np.round(np.sqrt(Yr.shape[0] / e.W.shape[0])).astype(int)
+        if ssub_B == 1:
+            AtW = e.A.T.dot(e.W)
+            traces_neuropil = (
+                Atb0 + AtW.dot(Yr) - AtW.dot(e.A).dot(e.C) - AtW.dot(e.b0)[:, None]
+            ).astype("f4")
+        else:
+            ds_mat = caiman.source_extraction.cnmf.utilities.decimation_matrix(
+                e.dims, ssub_B
+            )
+            Ads = ds_mat.dot(e.A)
+            b0ds = ds_mat.dot(e.b0)
+            AtW = Ads.T.dot(e.W)
+            traces_neuropil = (
+                Atb0
+                + ssub_B**2
+                * (
+                    AtW.dot(ds_mat).dot(Yr)
+                    - AtW.dot(Ads).dot(e.C)
+                    - AtW.dot(b0ds)[:, None]
+                )
+            ).astype("f4")
     else:
         traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
         traces_corrected += (
@@ -683,12 +690,10 @@ def format_caiman_output(e, cnmfe, movie):
     data = []
     coords = []
     for i in range(e.A.shape[1]):
-        roi = coo_matrix(e.A[:, i].reshape(
-            e.dims, order="F").toarray(), dtype="f4")
+        roi = coo_matrix(e.A[:, i].reshape(e.dims, order="F").toarray(), dtype="f4")
         data.append(roi.data)
         coords.append(
-            np.array([i * np.ones(len(roi.data)),
-                     roi.row, roi.col], dtype="i2")
+            np.array([i * np.ones(len(roi.data)), roi.row, roi.col], dtype="i2")
         )
     if len(data):
         data = np.concatenate(data)
@@ -812,6 +817,13 @@ if __name__ == "__main__":
         help="Overlap between neighboring patches in pixels.",
     )
     parser.add_argument(
+        "--tsub",
+        type=int,
+        default=2,
+        help="Temporal downsampling factor during initialization "
+        "with 'greedy_roi' or 'corr_pnr'.",
+    )
+    parser.add_argument(
         "--ssub",
         type=int,
         default=2,
@@ -819,11 +831,10 @@ if __name__ == "__main__":
         "with 'greedy_roi' or 'corr_pnr'.",
     )
     parser.add_argument(
-        "--tsub",
+        "--ssub_B",
         type=int,
         default=2,
-        help="Temporal downsampling factor during initialization "
-        "with 'greedy_roi' or 'corr_pnr'.",
+        help="Additional spatial downsampling factor for background during CNMF-E.",
     )
     parser.add_argument(
         "--merge_thr",
@@ -898,8 +909,7 @@ if __name__ == "__main__":
                 "'diameter' has to be positive for 'greedy_roi' or 'corr_pnr' initialization"
             )
     if args.init in ("1", "2", "3", "4"):  # for backwards compatibility
-        args.init = ("max/mean", "mean", "enhanced_mean",
-                     "max")[int(args.init) - 1]
+        args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
     print(args.init)
 
     # set env variables for CaImAn
@@ -916,16 +926,14 @@ if __name__ == "__main__":
         session, data_description, subject = {}, {}, {}
     subject_id = subject.get("subject_id", "")
     name = data_description.get("name", "")
-    setup_logging("aind-ophys-extraction",
-                  subject_id=subject_id, asset_name=name)
+    setup_logging("aind-ophys-extraction", subject_id=subject_id, asset_name=name)
     if next(input_dir.rglob("*decrosstalk.h5"), ""):
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
         input_fn = next(input_dir.rglob("*registered.h5"))
     parent_directory = input_fn.parent
     if session is not None and "Bergamo" in session["rig_id"]:
-        motion_corrected_fn = bergamo_segmentation(
-            input_fn, session, temp_dir=tmp_dir)
+        motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
     if not data_description or "multiplane" in data_description.get("name", ""):
@@ -963,6 +971,7 @@ if __name__ == "__main__":
             "gSig": (gSig, gSig),
             "gSiz": (int(round(gSig * (4 if cnmfe else 2) + 1)),) * 2,
             "ssub": args.ssub,
+            "ssub_B": args.ssub_B,
             "tsub": args.tsub,
             "merge_thr": args.merge_thr,
             "method_init": args.init,
@@ -978,8 +987,7 @@ if __name__ == "__main__":
         }
         opts = params.CNMFParams(params_dict=params_dict)
         with Pool(n_jobs) as pool:
-            cnm = cnmf.CNMF(n_processes=pool._processes,
-                            params=opts, dview=pool)
+            cnm = cnmf.CNMF(n_processes=pool._processes, params=opts, dview=pool)
             cnm.fit(movie)
             if not cnmfe:
                 cnm = cnm.refit(movie, dview=pool)
@@ -991,7 +999,7 @@ if __name__ == "__main__":
             cnm.estimates.cnn_preds if cnm.params.quality["use_cnn"] else np.nan
         )
         traces_corrected, traces_neuropil, traces_roi, data, coords = (
-            format_caiman_output(cnm.estimates, cnmfe, movie)
+            format_caiman_output(cnm.estimates, cnmfe, Yr)
         )
         neuropil_coords, keys = [], []
 
@@ -1066,26 +1074,20 @@ if __name__ == "__main__":
                     # extract signals for all frames, not just those used for cell detection
                     stat, traces_roi, traces_neuropil, _, _ = (
                         suite2p.extraction.extraction_wrapper(
-                            suite2p_stats, h5py.File(
-                                input_fn)["data"], ops=suite2p_args
+                            suite2p_stats, h5py.File(input_fn)["data"], ops=suite2p_args
                         )
                     )
                 else:  # all frames have already been used for detection as well as extraction
-                    suite2p_f_path = str(
-                        next(Path(args.tmp_dir).rglob("F.npy")))
-                    suite2p_fneu_path = str(
-                        next(Path(args.tmp_dir).rglob("Fneu.npy")))
+                    suite2p_f_path = str(next(Path(args.tmp_dir).rglob("F.npy")))
+                    suite2p_fneu_path = str(next(Path(args.tmp_dir).rglob("Fneu.npy")))
                     traces_roi = np.load(suite2p_f_path, allow_pickle=True)
-                    traces_neuropil = np.load(
-                        suite2p_fneu_path, allow_pickle=True)
-                iscell = np.load(
-                    str(next(Path(args.tmp_dir).rglob("iscell.npy"))))
+                    traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
+                iscell = np.load(str(next(Path(args.tmp_dir).rglob("iscell.npy"))))
                 if args.neuropil == "suite2p":
                     traces_corrected = (
                         traces_roi - suite2p_args["neucoeff"] * traces_neuropil
                     )
-                    r_values = suite2p_args["neucoeff"] * \
-                        np.ones(traces_roi.shape[0])
+                    r_values = suite2p_args["neucoeff"] * np.ones(traces_roi.shape[0])
                 else:
                     traces_corrected, r_values, raw_r = get_FC_from_r(
                         traces_roi, traces_neuropil
@@ -1099,8 +1101,7 @@ if __name__ == "__main__":
                     data.append(roi["lam"])
                     coords.append(
                         np.array(
-                            [i * np.ones(len(roi["lam"])),
-                             roi["ypix"], roi["xpix"]],
+                            [i * np.ones(len(roi["lam"])), roi["ypix"], roi["xpix"]],
                             dtype=np.int16,
                         )
                     )
@@ -1132,8 +1133,7 @@ if __name__ == "__main__":
                 logger.info(f"running CaImAn v{caiman.__version__}")
                 Ain = hstack(
                     [
-                        coo_matrix(
-                            (roi["lam"], (roi["ypix"], roi["xpix"])), shape=dims)
+                        coo_matrix((roi["lam"], (roi["ypix"], roi["xpix"])), shape=dims)
                         .reshape((-1, 1), order="F")
                         .tocsc()
                         for roi in suite2p_stats
@@ -1157,6 +1157,7 @@ if __name__ == "__main__":
                         "init_iter": 1,
                         "tsub": 1,
                         "ssub": 1,
+                        "ssub_B": args.ssub_B,
                         "min_corr": 0,
                         "min_pnr": 0,
                         "seed_method": caiman.base.rois.com(Ain, *dims),
@@ -1181,15 +1182,13 @@ if __name__ == "__main__":
                     )
                     cnm.fit(movie)
                     cnm.estimates.dims = dims
-                    cnm.params.init["gSig"] = tuple(
-                        map(int, cnm.params.init["gSig"]))
-                    cnm.estimates.evaluate_components(
-                        movie, cnm.params, dview=pool)
+                    cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
+                    cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
                 iscell = np.zeros((cnm.estimates.A.shape[1], 2), dtype="f4")
                 iscell[cnm.estimates.idx_components, 0] = 1
                 iscell[:, 1] = cnm.estimates.cnn_preds
                 traces_corrected, traces_neuropil, traces_roi, data, coords = (
-                    format_caiman_output(cnm.estimates, cnmfe, movie)
+                    format_caiman_output(cnm.estimates, cnmfe, Yr)
                 )
                 neuropil_coords, keys = [], []
 
@@ -1207,18 +1206,15 @@ if __name__ == "__main__":
     # write output files
     with h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f:
         # traces
-        f.create_dataset("traces/corrected",
-                         data=traces_corrected, compression="gzip")
-        f.create_dataset("traces/neuropil",
-                         data=traces_neuropil, compression="gzip")
+        f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
+        f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
         f.create_dataset("traces/roi", data=traces_roi, compression="gzip")
         if args.neuropil in ("mutualinfo", "suite2p"):
             f.create_dataset("traces/neuropil_rcoef", data=r_values)
             if args.neuropil == "mutualinfo":
                 # We save the raw r values if we are not using the suite2p neuropil.
                 # This is useful for debugging purposes.
-                f.create_dataset(
-                    "traces/raw_neuropil_rcoef_mutualinfo", data=raw_r)
+                f.create_dataset("traces/raw_neuropil_rcoef_mutualinfo", data=raw_r)
         for k in keys:
             dtype = np.array(stat[k]).dtype
             if dtype != "bool":
@@ -1239,8 +1235,7 @@ if __name__ == "__main__":
         if cellpose_path:
             with np.load(cellpose_path) as cp:
                 for k in cp.keys():
-                    f.create_dataset(
-                        f"cellpose/{k}", data=cp[k], compression="gzip")
+                    f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
         else:
             logging.warning("No cellpose output found.")
 
@@ -1279,8 +1274,7 @@ if __name__ == "__main__":
     lw = min(512 / max(*dims), 3)
     for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
         vmin, vmax = np.nanpercentile(img, (1, 99))
-        ax[i].imshow(img, interpolation=None,
-                     cmap="gray", vmin=vmin, vmax=vmax)
+        ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
         for c, good in zip(coordinates, iscell[:, 0]):
             ax[i].plot(*c["coordinates"].T, c="orange" if good else "r", lw=lw)
         ax[i].axis("off")
