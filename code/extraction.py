@@ -714,6 +714,49 @@ def estimate_gSig(diameter, img):  # TODO: check factor 1/2 on groundtruth data
         return args.diameter / 2
 
 
+def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img):
+    """Save summary images with ROI contours"""
+    cm = com(rois)
+    coordinates = get_contours(rois)
+    dims = rois.shape[1:]
+    
+    # Create plots
+    x_size = 17 * max(dims[1] / dims[0], 0.4)
+    fix, ax = plt.subplots(1, 3, figsize=(x_size, 6))
+    lw = min(512 / max(*dims), 3)
+    
+    for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
+        vmin, vmax = np.nanpercentile(img, (1, 99))
+        ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
+        for c, good in zip(coordinates, iscell[:, 0]):
+            ax[i].plot(*c["coordinates"].T, c="orange" if good else "r", lw=lw)
+        ax[i].axis("off")
+        ax[i].set_title(
+            ("mean image", "max image", "correlation image")[i],
+            fontsize=min(24, 2.4 + 2 * x_size),
+        )
+    
+    plt.tight_layout(pad=0.1)
+    plt.savefig(
+        output_dir / f"{unique_id}_detected_ROIs.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+    
+    # Add IDs and save another version
+    for i in (0, 1, 2):
+        for k in range(rois.shape[0]):
+            ax[i].text(
+                *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
+            )
+    
+    plt.savefig(
+        output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments
     
@@ -1278,41 +1321,11 @@ if __name__ == "__main__":
 
     # plot contours of detected ROIs over a selection of summary images
     rois = sparse.COO(coords, data, shape)
-    cm = com(rois)
-    coordinates = get_contours(rois)
     with h5py.File(str(motion_corrected_fn), "r") as f:
         corr_img = max_corr_image(f["data"])
-    # plot
-    x_size = 17 * max(dims[1] / dims[0], 0.4)
-    fix, ax = plt.subplots(1, 3, figsize=(x_size, 6))
-    lw = min(512 / max(*dims), 3)
-    for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
-        vmin, vmax = np.nanpercentile(img, (1, 99))
-        ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
-        for c, good in zip(coordinates, iscell[:, 0]):
-            ax[i].plot(*c["coordinates"].T, c="orange" if good else "r", lw=lw)
-        ax[i].axis("off")
-        ax[i].set_title(
-            ("mean image", "max image", "correlation image")[i],
-            fontsize=min(24, 2.4 + 2 * x_size),
-        )
-    plt.tight_layout(pad=0.1)
-    plt.savefig(
-        output_dir / f"{unique_id}_detected_ROIs.png",
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-    for i in (0, 1, 2):
-        for k in range(rois.shape[0]):
-            ax[i].text(
-                *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
-            )
-    plt.savefig(
-        output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
+    save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img)
 
+    # create a video overlaid wit ROI contours
     if args.contour_video:
         with h5py.File(str(motion_corrected_fn), "r") as f:
             contour_video(
