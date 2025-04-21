@@ -714,15 +714,14 @@ def estimate_gSig(diameter, img):  # TODO: check factor 1/2 on groundtruth data
         return args.diameter / 2
 
 
-if __name__ == "__main__":
-    start_time = dt.now()
-    # Set the log level and name the logger
-    logger = logging.getLogger(
-        "Source extraction using Suite2p with or without Cellpose"
-    )
-    logger.setLevel(logging.INFO)
-
-    # Parse command-line arguments
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments
+    
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i", "--input-dir", type=str, help="Input directory", default="../data/"
@@ -898,7 +897,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    # check consistency of args
+
+    """Validate command line arguments for consistency"""
     args.init = args.init.lower()
     args.neuropil = args.neuropil.lower()
     if args.neuropil == "cnmf" and args.init == "corr_pnr":
@@ -916,15 +916,28 @@ if __name__ == "__main__":
             raise NotImplementedError(
                 "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
             )
-    if args.init in ("1", "2", "3", "4"):  # for backwards compatibility
+    if args.init in ("1", "2", "3", "4"):  # for backward compatibility
         args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
-    print(args.init)
+    return args
+
+
+if __name__ == "__main__":
+    start_time = dt.now()
+    # Set the log level and name the logger
+    logger = logging.getLogger(
+        "Source extraction using Suite2p with or without Cellpose"
+    )
+    logger.setLevel(logging.INFO)
+
+    # Parse command-line arguments
+    args = parse_args()
 
     # set env variables for CaImAn
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
     os.environ["CAIMAN_TEMP"] = args.tmp_dir
+
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
@@ -1251,12 +1264,6 @@ if __name__ == "__main__":
         # summary images
         if ops_path:
             ops = np.load(ops_path, allow_pickle=True)[()]
-        else:
-            with h5py.File(str(motion_corrected_fn), "r") as open_vid:
-                ops = {
-                    "meanImg": mean_image(open_vid["data"]),
-                    "max_proj": max_image(open_vid["data"]),
-                }
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
