@@ -584,7 +584,7 @@ def write_qc_metrics(output_dir: Path, plane: str, num_rois: int) -> None:
         statuses.append(Status.FAIL)
     if plane:
         reference_image_fp = (
-            f"{experiment_id}/extraction/{plane}_detected_ROIs_withIDs.png"
+            f"{plane}/extraction/{plane}_detected_ROIs_withIDs.png"
         )
         metric_fp = output_dir / f"{plane}_extraction_metric.json"
     else:
