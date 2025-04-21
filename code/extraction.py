@@ -117,7 +117,7 @@ def make_output_directory(output_dir: Path, plane: str = "") -> str:
     if not plane:
         output_dir = output_dir / "extraction"
     else:
-        output_dir = output_dir / "extraction" / plane
+        output_dir = output_dir / plane / "extraction"
     output_dir.mkdir(exist_ok=True, parents=True)
     return output_dir
 
