@@ -29,80 +29,258 @@ from cellpose.models import Cellpose
 from scipy.sparse import coo_matrix, hstack, linalg
 
 
-def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
-    """
-    Get the r value that minimizes the mutual information between
-    the corrected trace and the neuropil trace.
-
-    Parameters
-    ----------
-    raw_trace : np.ndarray
-        1D array of raw trace values.
-    neuropil_trace : np.ndarray
-        1D array of neuropil trace values.
-    resolution : float
-        Resolution of r values to test.
-    r_test_range : list of float
-        List of two floats representing the inclusive range of r values to test.
+# Core Utility Functions
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments
 
     Returns
     -------
-    r_best : float
-        r value that minimizes the mutual information between
-        the corrected trace and the neuropil trace.
-    mi_iters : np.ndarray
-        1D array of mutual information values for each r value tested.
-    r_iters : np.ndarray
-        1D array of r values tested.
+    argparse.Namespace
+        Parsed arguments
     """
-    r_iters = np.arange(r_test_range[0], r_test_range[1] + resolution, resolution)
-    mi_iters = np.zeros(len(r_iters))
-    neuropil_trace[np.isnan(neuropil_trace)] = 0
-    raw_trace[np.isnan(raw_trace)] = 0
-    for r_i, r_temp in enumerate(r_iters):
-        Fc = raw_trace - r_temp * neuropil_trace
-        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(
-            Fc, neuropil_trace
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i", "--input-dir", type=str, help="Input directory", default="../data/"
+    )
+    parser.add_argument(
+        "-o", "--output-dir", type=str, help="Output directory", default="../results/"
+    )
+    parser.add_argument(
+        "--tmp_dir",
+        type=str,
+        default="/scratch",
+        help="Directory into which to write temporary files "
+        "produced by Suite2P (default: /scratch)",
+    )
+    parser.add_argument(
+        "--diameter",
+        type=int,
+        default=0,
+        help="Diameter that will be used for cellpose. "
+        "If set to zero, diameter is estimated.",
+    )
+    parser.add_argument(
+        "--init",
+        type=str,
+        default="mean",
+        help="Initialization. Will find masks using "
+        "max/mean: Cellpose on max projection image divided by mean image "
+        "mean: Cellpose on mean image "
+        "enhanced_mean: Cellpose on enhanced mean image "
+        "max: Cellpose on maximum projection image "
+        "sourcery: Suite2p's functional mode without 'sparse_mode' "
+        "sparsery: Suite2p's functional mode with 'sparse_mode' "
+        "greedy_roi: CaImAn's functional 'greedy_roi' mode "
+        "corr_pnr: CaImAn's functional 'corr_pnr' mode ",
+    )
+    parser.add_argument(
+        "--denoise",
+        action="store_true",
+        help="Whether or not binned movie should be denoised before cell detection.",
+    )
+    parser.add_argument(
+        "--cellprob_threshold",
+        type=float,
+        default=0.0,
+        help="Threshold for cell detection that will be used by cellpose.",
+    )
+    parser.add_argument(
+        "--flow_threshold",
+        type=float,
+        default=1.5,
+        help="Flow threshold that will be used by cellpose.",
+    )
+    parser.add_argument(
+        "--spatial_hp_cp",
+        type=int,
+        default=0,
+        help="Window for spatial high-pass filtering of image "
+        "to be used for cellpose.",
+    )
+    parser.add_argument(
+        "--pretrained_model",
+        type=str,
+        default="cyto",
+        help="Path to pretrained model or string for model type "
+        "(can be user's model).",
+    )
+    parser.add_argument(
+        "--neuropil",
+        type=str,
+        default="mutualinfo",
+        help="How to model the neuropil background, and whether to perform demixing. "
+        "cnmf(-e) demix traces of overlapping ROIs via NMF, suite2p & mutualinfo do not. "
+        "cnmf: low-rank background of CNMF "
+        "cnmf-e: ring model of CNMF-E "
+        "suite2p: neuropil masks and fix weight provided by suite2p "
+        "mutualinfo: neuropil masks from suite2p, but weights based on mutual information ",
+    )
+    parser.add_argument(
+        "--K",
+        type=int,
+        default=5,
+        help="Number of components to be found "
+        "(per patch or whole FOV depending on whether 'rf=None').",
+    )
+    parser.add_argument(
+        "--nb",
+        type=int,
+        default=2,
+        help="Number of background components if 'neuropil=cnmf').",
+    )
+    parser.add_argument(
+        "--rf",
+        type=int,
+        default=40,
+        help="Half-size of patch in pixels. If None, no patches are "
+        "constructed and the whole FOV is processed jointly. If list, "
+        "it should be a list of two elements corresponding to the height "
+        "and width of patches.",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=18,
+        help="Overlap between neighboring patches in pixels.",
+    )
+    parser.add_argument(
+        "--tsub",
+        type=int,
+        default=2,
+        help="Temporal downsampling factor during initialization "
+        "with 'greedy_roi' or 'corr_pnr'.",
+    )
+    parser.add_argument(
+        "--ssub",
+        type=int,
+        default=2,
+        help="Spatial downsampling factor during initialization "
+        "with 'greedy_roi' or 'corr_pnr'.",
+    )
+    parser.add_argument(
+        "--ssub_B",
+        type=int,
+        default=2,
+        help="Additional spatial downsampling factor for background during CNMF-E.",
+    )
+    parser.add_argument(
+        "--merge_thr",
+        type=float,
+        default=0.8,
+        help="Trace correlation threshold for merging two components.",
+    )
+    parser.add_argument(
+        "--min_corr",
+        type=float,
+        default=0.6,
+        help="Minimum value of correlation image for determining a "
+        "candidate component during 'corr_pnr'.",
+    )
+    parser.add_argument(
+        "--min_pnr",
+        type=float,
+        default=4,
+        help="Minimum value of psnr image for determining a candidate "
+        "component during 'corr_pnr'.",
+    )
+    parser.add_argument(
+        "--snr_thr",
+        type=float,
+        default=1.5,
+        help="Trace SNR threshold for component evaluation. "
+        "Traces with SNR above this will get accepted.",
+    )
+    parser.add_argument(
+        "--rval_thr",
+        type=float,
+        default=0.6,
+        help="Spatial correlation threshold for component evaluation. "
+        "Components with correlation higher than this will get accepted.",
+    )
+    parser.add_argument(
+        "--cnn_thr",
+        type=float,
+        default=0.9,
+        help="CNN classifier threshold for component evaluation. "
+        "Components with score higher than this will get accepted. "
+        "If set to 0 the CNN classifier won't be used.",
+    )
+    parser.add_argument(
+        "--contour_video",
+        action="store_true",
+        help="Create a video overlaying the raw data, ROI activity, "
+        "and remainder with ROI contours.",
+    )
+
+    args = parser.parse_args()
+
+    """Validate command line arguments for consistency"""
+    args.init = args.init.lower()
+    args.neuropil = args.neuropil.lower()
+    if args.neuropil == "cnmf" and args.init == "corr_pnr":
+        logger.info(
+            "'corr_pnr' initialization with neuropil model 'cnmf' does not "
+            "support spatial downsampling. Setting ssub to 1"
         )
-    min_ind = np.argmin(mi_iters)
-    r_best = r_iters[min_ind]
-    return r_best, mi_iters, r_iters
+        args.ssub = 1
+    if args.neuropil == "cnmf-e" and args.init == "greedy_roi":
+        raise NotImplementedError(
+            "Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization"
+        )
+    if args.init in ("greedy_roi", "corr_pnr"):
+        if args.neuropil[:4] != "cnmf":
+            raise NotImplementedError(
+                "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
+            )
+    if args.init in ("1", "2", "3", "4"):  # for backward compatibility
+        args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
+    return args
 
 
-def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
-    """
-    Get the corrected trace from the raw trace and neuropil trace using the given r values.
+def get_metadata(input_dir: Path) -> Tuple[dict, dict, dict]:
+    """Get the session and data description metadata from the input directory
 
     Parameters
     ----------
-    raw_trace : np.ndarray
-        1D array of raw trace values.
-    neuropil_trace : np.ndarray
-        1D array of neuropil trace values.
-    min_r_count : int
-        Minimum number of r values to use for mean r value calculation.
+    input_dir: Path
+        input directory
 
     Returns
     -------
-    FCs : np.ndarray
-        1D array of corrected traces for each r value.
-    r_values : np.ndarray
-        1D array of r values used for the correction.
-    raw_r : np.ndarray
-        1D array of r values that minimized the mutual information.
+    session: dict
+        session metadata
+    data_description: dict
+        data description metadata
+    subject: dict
+        subject metadata
     """
-    r_values = np.zeros(raw_trace.shape[0])
-    FCs = np.zeros_like(raw_trace)
-    for roi in range(raw_trace.shape[0]):
-        r_values[roi], _, _ = get_r_from_min_mi(raw_trace[roi], neuropil_trace[roi])
-    mean_r = np.mean(r_values[r_values < 1])
-    if len(np.where(r_values < 1)[0]) < min_r_count:
-        mean_r = 0.8
-    raw_r = r_values.copy()
-    r_values[r_values >= 1] = mean_r
-    for roi in range(raw_trace.shape[0]):
-        FCs[roi] = raw_trace[roi] - r_values[roi] * neuropil_trace[roi]
-    return FCs, r_values, raw_r
+    session_fp = next(input_dir.rglob("session.json"))
+    with open(session_fp, "r") as j:
+        session = json.load(j)
+    data_des_fp = next(input_dir.rglob("data_description.json"))
+    with open(data_des_fp, "r") as j:
+        data_description = json.load(j)
+    subject_fp = next(input_dir.rglob("subject.json"))
+    with open(subject_fp, "r") as j:
+        subject = json.load(j)
+
+    return session, data_description, subject
+
+
+def get_frame_rate(session: dict) -> float:
+    """Get the frame rate from the session metadata
+
+    Parameters
+    ----------
+    session: dict
+        session metadata
+
+    Returns
+    -------
+    frame_rate: float
+        frame rate
+    """
+    return float(session["data_streams"][0]["ophys_fovs"][0]["frame_rate"])
 
 
 def make_output_directory(output_dir: Path, experiment_id: str) -> str:
@@ -174,6 +352,7 @@ def write_data_process(
         json.dump(json.loads(data_proc.model_dump_json()), f, indent=4)
 
 
+# Data Handling Functions
 def create_virtual_dataset(
     h5_file: Path, frame_locations: list, frames_length: int, temp_dir: Path
 ) -> Path:
@@ -212,7 +391,7 @@ def create_virtual_dataset(
 
 
 def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> str:
-    """Performs singleplane motion correction on a singleplane data set
+    """Creates a virtual dataset for Bergamo segmentation by filtering out photostimulation frames
 
     Parameters
     ----------
@@ -244,45 +423,45 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
     )
 
 
-def get_metdata(input_dir: Path) -> Tuple[dict, dict, dict]:
-    """Get the session and data description metadata from the input directory
+def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) -> str:
+    """
+    Create a Virtual Dataset (VDS) for a specific chunk of the input data.
 
     Parameters
     ----------
-    input_dir: Path
-        input directory
+    start : int
+        The starting index of the chunk in the input dataset.
+    chunksize : int
+        The number of rows in the chunk.
+    input_fn : str
+        Path to the input HDF5 file containing the source dataset.
+    tmp_dir : str
+        Directory where the temporary VDS file for the chunk will be created.
 
     Returns
     -------
-    session: dict
-        session metadata
-    data_description: dict
-        data description metadata
-    subject: dict
-        subject metadata
+    str
+        The path to the created VDS file for the chunk.
     """
-    session_fp = next(input_dir.rglob("session.json"))
-    with open(session_fp, "r") as j:
-        session = json.load(j)
-    data_des_fp = next(input_dir.rglob("data_description.json"))
-    with open(data_des_fp, "r") as j:
-        data_description = json.load(j)
-    subject_fp = next(input_dir.rglob("subject.json"))
-    with open(subject_fp, "r") as j:
-        subject = json.load(j)
-
-    return session, data_description, subject
+    with h5py.File(input_fn, "r") as fin:
+        data = fin["data"]
+        end = min(start + chunksize, data.shape[0])
+        # Define the virtual layout for this chunk
+        layout = h5py.VirtualLayout(
+            shape=(end - start, *data.shape[1:]), dtype=data.dtype
+        )
+        vsource = h5py.VirtualSource(input_fn, "data", shape=data.shape)
+        layout[:] = vsource[start:end]
+        # Create a VDS file for this chunk
+        vds_file = os.path.join(tmp_dir, f"chunk_{start}.h5")
+        with h5py.File(vds_file, "w") as fout:
+            fout.create_virtual_dataset("data", layout)
+    return vds_file
 
 
 def get_frame_rate(session: dict) -> float:
     """Attempt to pull frame rate from session.json
     Returns none if frame rate not in session.json
-
-    Parameters
-    ----------
-    session: dict
-        session metadata
-
     Returns
     -------
     frame_rate: float
@@ -300,6 +479,72 @@ def get_frame_rate(session: dict) -> float:
     return frame_rate_hz
 
 
+def create_mmap_file(
+    input_fn: str,
+    unique_id: str,
+    tmp_dir: str,
+    chunksize: int = 500,
+    n_chunks: int = 100,
+) -> str:
+    """
+    Create a memory-mapped file from input data.
+
+    Parameters
+    ----------
+    input_fn : str
+        Path to the input HDF5 file containing the source dataset.
+    unique_id : str
+        Unique identifier for the output memory-mapped file.
+    tmp_dir : str
+        Directory where temporary chunk files or virtual datasets will be created.
+    chunksize : int, optional
+        The number of frames in each chunk (default is 500).
+    n_chunks : int, optional
+        The number of chunks to use when combining the memory-mapped file (default is 100).
+
+    Returns
+    -------
+    str
+        The path to the created memory-mapped file.
+    """
+    with h5py.File(input_fn, "r") as fin:
+        data = fin["data"]
+        if data.nbytes < 1e9:
+            logging.info("Data is small, saving directly as a memory-mapped file.")
+            fname_new = caiman.save_memmap(
+                [str(input_fn)],
+                var_name_hdf5="data",
+                order="C",
+                base_name=unique_id,
+            )
+        else:
+            logging.info("Data is large, splitting into chunks.")
+            with Pool() as pool:
+                try:
+                    chunkfiles = pool.starmap(
+                        create_chunk_vds,
+                        [
+                            (start, chunksize, input_fn, tmp_dir)
+                            for start in range(0, data.shape[0], chunksize)
+                        ],
+                    )
+                    logging.info(f"Created {len(chunkfiles)} chunk files.")
+                    fname_new = caiman.save_memmap(
+                        chunkfiles,
+                        var_name_hdf5="data",
+                        order="C",
+                        dview=pool,
+                        base_name=unique_id,
+                        n_chunks=n_chunks,
+                    )
+                    logging.info("Memory-mapped file created successfully.")
+                finally:
+                    logging.info("Cleaning up temporary chunk files.")
+                    pool.map(os.remove, chunkfiles)
+    return fname_new
+
+
+# ROI Analysis Functions
 def com(rois):
     """Calculation of the center of mass for spatial components
 
@@ -406,6 +651,292 @@ def get_contours(rois, thr=0.2, thr_method="max"):
         pars["neuron_id"] = i + 1
         coordinates.append(pars)
     return coordinates
+
+
+def estimate_gSig(diameter, img):
+    """Estimate Gaussian sigma for CaImAn based on cell diameter
+
+    Parameters
+    ----------
+    diameter : int
+        Cell diameter in pixels; if 0, will be automatically estimated with Cellpose
+    img : np.ndarray
+        Mean image used for automatic diameter estimation if needed
+
+    Returns
+    -------
+    float
+        Estimated Gaussian sigma (half the cell diameter)
+    """
+    if diameter == 0:
+        logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
+        return Cellpose().sz.eval(img)[0] / 2
+    else:
+        return args.diameter / 2
+
+
+# Trace Processing Functions
+def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
+    """
+    Get the r value that minimizes the mutual information between
+    the corrected trace and the neuropil trace.
+
+    Parameters
+    ----------
+    raw_trace : np.ndarray
+        1D array of raw trace values.
+    neuropil_trace : np.ndarray
+        1D array of neuropil trace values.
+    resolution : float
+        Resolution of r values to test.
+    r_test_range : list of float
+        List of two floats representing the inclusive range of r values to test.
+
+    Returns
+    -------
+    r_best : float
+        r value that minimizes the mutual information between
+        the corrected trace and the neuropil trace.
+    mi_iters : np.ndarray
+        1D array of mutual information values for each r value tested.
+    r_iters : np.ndarray
+        1D array of r values tested.
+    """
+    r_iters = np.arange(r_test_range[0], r_test_range[1] + resolution, resolution)
+    mi_iters = np.zeros(len(r_iters))
+    neuropil_trace[np.isnan(neuropil_trace)] = 0
+    raw_trace[np.isnan(raw_trace)] = 0
+    for r_i, r_temp in enumerate(r_iters):
+        Fc = raw_trace - r_temp * neuropil_trace
+        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(
+            Fc, neuropil_trace
+        )
+    min_ind = np.argmin(mi_iters)
+    r_best = r_iters[min_ind]
+    return r_best, mi_iters, r_iters
+
+
+def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
+    """
+    Get the corrected trace from the raw trace and neuropil trace using the given r values.
+
+    Parameters
+    ----------
+    raw_trace : np.ndarray
+        1D array of raw trace values.
+    neuropil_trace : np.ndarray
+        1D array of neuropil trace values.
+    min_r_count : int
+        Minimum number of r values to use for mean r value calculation.
+
+    Returns
+    -------
+    FCs : np.ndarray
+        1D array of corrected traces for each r value.
+    r_values : np.ndarray
+        1D array of r values used for the correction.
+    raw_r : np.ndarray
+        1D array of r values that minimized the mutual information.
+    """
+    r_values = np.zeros(raw_trace.shape[0])
+    FCs = np.zeros_like(raw_trace)
+    for roi in range(raw_trace.shape[0]):
+        r_values[roi], _, _ = get_r_from_min_mi(raw_trace[roi], neuropil_trace[roi])
+    mean_r = np.mean(r_values[r_values < 1])
+    if len(np.where(r_values < 1)[0]) < min_r_count:
+        mean_r = 0.8
+    raw_r = r_values.copy()
+    r_values[r_values >= 1] = mean_r
+    for roi in range(raw_trace.shape[0]):
+        FCs[roi] = raw_trace[roi] - r_values[roi] * neuropil_trace[roi]
+    return FCs, r_values, raw_r
+
+
+def format_caiman_output(e, cnmfe, Yr):
+    """Format the output from CaImAn's CNMF for standardized extraction results.
+
+    Parameters
+    ----------
+    e : caiman.source_extraction.cnmf.estimates.Estimates
+        The estimates object from CaImAn containing spatial and temporal components
+    cnmfe : bool
+        Flag indicating whether CNMF-E (True) or standard CNMF (False) was used
+    Yr : np.ndarray
+        The data in a flattened format (pixels x time)
+
+    Returns
+    -------
+    traces_corrected : np.ndarray
+        Array of corrected fluorescence traces (ROIs x time)
+    traces_neuropil : np.ndarray
+        Array of neuropil traces (ROIs x time)
+    traces_roi : np.ndarray
+        Array of raw fluorescence traces including neuropil (ROIs x time)
+    data : np.ndarray
+        Values for ROI spatial footprints in sparse format
+    coords : np.ndarray
+        Coordinates for ROI spatial footprints in sparse format (3 x N)
+    iscell : np.ndarray
+        Array indicating for each component (ROI) whether it's a cell (1) or not (0)
+    """
+    assert np.allclose(linalg.norm(e.A, 2, 0), 1)
+    traces_corrected = (e.C + e.YrA).astype("f4")
+    if cnmfe:
+        Atb0 = e.A.T.dot(e.b0)[:, None]
+        traces_corrected += Atb0
+        ssub_B = np.round(np.sqrt(Yr.shape[0] / e.W.shape[0])).astype(int)
+        if ssub_B == 1:
+            AtW = e.A.T.dot(e.W)
+            traces_neuropil = (
+                Atb0 + AtW.dot(Yr) - AtW.dot(e.A).dot(e.C) - AtW.dot(e.b0)[:, None]
+            ).astype("f4")
+        else:
+            ds_mat = caiman.source_extraction.cnmf.utilities.decimation_matrix(
+                e.dims, ssub_B
+            )
+            Ads = ds_mat.dot(e.A)
+            b0ds = ds_mat.dot(e.b0)
+            AtW = Ads.T.dot(e.W)
+            traces_neuropil = (
+                Atb0
+                + ssub_B**2
+                * (
+                    AtW.dot(ds_mat).dot(Yr)
+                    - AtW.dot(Ads).dot(e.C)
+                    - AtW.dot(b0ds)[:, None]
+                )
+            ).astype("f4")
+    else:
+        traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
+        traces_corrected += (
+            0.8 * traces_neuropil
+        )  # TODO: check factor on groundtruth data
+    traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
+    # convert ROIs to sparse COO 3D-tensor  a la https://sparse.pydata.org/en/stable/construct.html
+    data = []
+    coords = []
+    for i in range(e.A.shape[1]):
+        roi = coo_matrix(e.A[:, i].reshape(e.dims, order="F").toarray(), dtype="f4")
+        data.append(roi.data)
+        coords.append(
+            np.array([i * np.ones(len(roi.data)), roi.row, roi.col], dtype="i2")
+        )
+    if len(data):
+        data = np.concatenate(data)
+        coords = np.hstack(coords)
+    # maybe TODO: save background
+    iscell = np.zeros((e.A.shape[1], 2), dtype="f4")
+    iscell[e.idx_components, 0] = 1
+    iscell[:, 1] = e.cnn_preds if hasattr(e, "cnn_preds") else np.nan
+    return traces_corrected, traces_neuropil, traces_roi, data, coords, iscell
+
+
+def estimate_gSig(diameter, img):  # TODO: check factor 1/2 on groundtruth data
+    if diameter == 0:
+        logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
+        return Cellpose().sz.eval(img)[0] / 2
+    else:
+        return args.diameter / 2
+
+
+def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
+    """Write the QC metrics to a json file
+
+    Parameters
+    ----------
+    output_dir: Path
+        output directory
+    experiment_id: str
+        unique plane id
+    num_rois: int
+        number of ROIs detected in this plane
+    """
+
+    # Build options and statuses
+    options = []
+    statuses = []
+
+    options.append("Missing ROIs")
+    statuses.append(Status.FAIL)
+
+    for i in range(num_rois):
+        options.append(f"ROI {i} invalid")
+        statuses.append(Status.FAIL)
+
+    # Define metric
+    metric = QCMetric(
+        name=f"{experiment_id} Detected ROIs",
+        description="",
+        reference=str(
+            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
+        ),
+        status_history=[
+            QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
+        ],
+        value=CheckboxMetric(value=[], options=options, status=statuses),
+    )
+
+    with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
+        json.dump(json.loads(metric.model_dump_json()), f, indent=4)
+
+
+def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img):
+    """Save summary images with ROI contours
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory where summary images will be saved
+    unique_id : str
+        Unique identifier for the output files
+    rois : sparse.COO
+        Tensor of spatial components (K x height x width)
+    iscell : np.ndarray
+        Array of shape (K, 2) indicating whether each component is a cell
+    ops : dict
+        Dictionary containing summary images
+    corr_img : np.ndarray
+        Correlation image
+    """
+    cm = com(rois)
+    coordinates = get_contours(rois)
+    dims = rois.shape[1:]
+
+    # Create plots
+    x_size = 17 * max(dims[1] / dims[0], 0.4)
+    fix, ax = plt.subplots(1, 3, figsize=(x_size, 6))
+    lw = min(512 / max(*dims), 3)
+
+    for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
+        vmin, vmax = np.nanpercentile(img, (1, 99))
+        ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
+        for c, good in zip(coordinates, iscell[:, 0]):
+            ax[i].plot(*c["coordinates"].T, c="orange" if good else "r", lw=lw)
+        ax[i].axis("off")
+        ax[i].set_title(
+            ("mean image", "max image", "correlation image")[i],
+            fontsize=min(24, 2.4 + 2 * x_size),
+        )
+
+    plt.tight_layout(pad=0.1)
+    plt.savefig(
+        output_dir / f"{unique_id}_detected_ROIs.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+
+    # Add IDs and save another version
+    for i in (0, 1, 2):
+        for k in range(rois.shape[0]):
+            ax[i].text(
+                *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
+            )
+
+    plt.savefig(
+        output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
 
 
 def contour_video(
@@ -566,459 +1097,6 @@ def contour_video(
     writer.close()
 
 
-def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) -> str:
-    """
-    Create a Virtual Dataset (VDS) for a specific chunk of the input data.
-
-    Parameters
-    ----------
-    start : int
-        The starting index of the chunk in the input dataset.
-    chunksize : int
-        The number of rows in the chunk.
-    input_fn : str
-        Path to the input HDF5 file containing the source dataset.
-    tmp_dir : str
-        Directory where the temporary VDS file for the chunk will be created.
-
-    Returns
-    -------
-    str
-        The path to the created VDS file for the chunk.
-    """
-    with h5py.File(input_fn, "r") as fin:
-        data = fin["data"]
-        end = min(start + chunksize, data.shape[0])
-        # Define the virtual layout for this chunk
-        layout = h5py.VirtualLayout(
-            shape=(end - start, *data.shape[1:]), dtype=data.dtype
-        )
-        vsource = h5py.VirtualSource(input_fn, "data", shape=data.shape)
-        layout[:] = vsource[start:end]
-        # Create a VDS file for this chunk
-        vds_file = os.path.join(tmp_dir, f"chunk_{start}.h5")
-        with h5py.File(vds_file, "w") as fout:
-            fout.create_virtual_dataset("data", layout)
-    return vds_file
-
-
-def create_mmap_file(
-    input_fn: str,
-    unique_id: str,
-    tmp_dir: str,
-    chunksize: int = 500,
-    n_chunks: int = 100,
-) -> str:
-    """
-    Create a memory-mapped file from input data.
-
-    Parameters
-    ----------
-    input_fn : str
-        Path to the input HDF5 file containing the source dataset.
-    unique_id : str
-        Unique identifier for the output memory-mapped file.
-    tmp_dir : str
-        Directory where temporary chunk files or virtual datasets will be created.
-    chunksize : int, optional
-        The number of frames in each chunk (default is 500).
-    n_chunks : int, optional
-        The number of chunks to use when combining the memory-mapped file (default is 100).
-
-    Returns
-    -------
-    str
-        The path to the created memory-mapped file.
-    """
-    with h5py.File(input_fn, "r") as fin:
-        data = fin["data"]
-        if data.nbytes < 1e9:
-            logging.info("Data is small, saving directly as a memory-mapped file.")
-            fname_new = caiman.save_memmap(
-                [str(input_fn)],
-                var_name_hdf5="data",
-                order="C",
-                base_name=unique_id,
-            )
-        else:
-            logging.info("Data is large, splitting into chunks.")
-            with Pool() as pool:
-                try:
-                    chunkfiles = pool.starmap(
-                        create_chunk_vds,
-                        [
-                            (start, chunksize, input_fn, tmp_dir)
-                            for start in range(0, data.shape[0], chunksize)
-                        ],
-                    )
-                    logging.info(f"Created {len(chunkfiles)} chunk files.")
-                    fname_new = caiman.save_memmap(
-                        chunkfiles,
-                        var_name_hdf5="data",
-                        order="C",
-                        dview=pool,
-                        base_name=unique_id,
-                        n_chunks=n_chunks,
-                    )
-                    logging.info("Memory-mapped file created successfully.")
-                finally:
-                    logging.info("Cleaning up temporary chunk files.")
-                    pool.map(os.remove, chunkfiles)
-    return fname_new
-
-
-def format_caiman_output(e, cnmfe, Yr):
-    assert np.allclose(linalg.norm(e.A, 2, 0), 1)
-    traces_corrected = (e.C + e.YrA).astype("f4")
-    if cnmfe:
-        Atb0 = e.A.T.dot(e.b0)[:, None]
-        traces_corrected += Atb0
-        ssub_B = np.round(np.sqrt(Yr.shape[0] / e.W.shape[0])).astype(int)
-        if ssub_B == 1:
-            AtW = e.A.T.dot(e.W)
-            traces_neuropil = (
-                Atb0 + AtW.dot(Yr) - AtW.dot(e.A).dot(e.C) - AtW.dot(e.b0)[:, None]
-            ).astype("f4")
-        else:
-            ds_mat = caiman.source_extraction.cnmf.utilities.decimation_matrix(
-                e.dims, ssub_B
-            )
-            Ads = ds_mat.dot(e.A)
-            b0ds = ds_mat.dot(e.b0)
-            AtW = Ads.T.dot(e.W)
-            traces_neuropil = (
-                Atb0
-                + ssub_B**2
-                * (
-                    AtW.dot(ds_mat).dot(Yr)
-                    - AtW.dot(Ads).dot(e.C)
-                    - AtW.dot(b0ds)[:, None]
-                )
-            ).astype("f4")
-    else:
-        traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
-        traces_corrected += (
-            0.8 * traces_neuropil
-        )  # TODO: check factor on groundtruth data
-    traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
-    # convert ROIs to sparse COO 3D-tensor  a la https://sparse.pydata.org/en/stable/construct.html
-    data = []
-    coords = []
-    for i in range(e.A.shape[1]):
-        roi = coo_matrix(e.A[:, i].reshape(e.dims, order="F").toarray(), dtype="f4")
-        data.append(roi.data)
-        coords.append(
-            np.array([i * np.ones(len(roi.data)), roi.row, roi.col], dtype="i2")
-        )
-    if len(data):
-        data = np.concatenate(data)
-        coords = np.hstack(coords)
-    # maybe TODO: save background
-    iscell = np.zeros((e.A.shape[1], 2), dtype="f4")
-    iscell[e.idx_components, 0] = 1
-    iscell[:, 1] = e.cnn_preds if hasattr(e, "cnn_preds") else np.nan
-    return traces_corrected, traces_neuropil, traces_roi, data, coords, iscell
-
-
-def estimate_gSig(diameter, img):  # TODO: check factor 1/2 on groundtruth data
-    if diameter == 0:
-        logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
-        return Cellpose().sz.eval(img)[0] / 2
-    else:
-        return args.diameter / 2
-
-
-def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
-    """Write the QC metrics to a json file
-
-    Parameters
-    ----------
-    output_dir: Path
-        output directory
-    experiment_id: str
-        unique plane id
-    num_rois: int
-        number of ROIs detected in this plane
-    """
-
-    # Build options and statuses
-    options = []
-    statuses = []
-
-    options.append("Missing ROIs")
-    statuses.append(Status.FAIL)
-
-    for i in range(num_rois):
-        options.append(f"ROI {i} invalid")
-        statuses.append(Status.FAIL)
-
-    # Define metric
-    metric = QCMetric(
-        name=f"{experiment_id} Detected ROIs",
-        description="",
-        reference=str(
-            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
-        ),
-        status_history=[
-            QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
-        ],
-        value=CheckboxMetric(value=[], options=options, status=statuses),
-    )
-
-    with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
-        json.dump(json.loads(metric.model_dump_json()), f, indent=4)
-
-
-def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img):
-    """Save summary images with ROI contours"""
-    cm = com(rois)
-    coordinates = get_contours(rois)
-    dims = rois.shape[1:]
-    
-    # Create plots
-    x_size = 17 * max(dims[1] / dims[0], 0.4)
-    fix, ax = plt.subplots(1, 3, figsize=(x_size, 6))
-    lw = min(512 / max(*dims), 3)
-    
-    for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
-        vmin, vmax = np.nanpercentile(img, (1, 99))
-        ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
-        for c, good in zip(coordinates, iscell[:, 0]):
-            ax[i].plot(*c["coordinates"].T, c="orange" if good else "r", lw=lw)
-        ax[i].axis("off")
-        ax[i].set_title(
-            ("mean image", "max image", "correlation image")[i],
-            fontsize=min(24, 2.4 + 2 * x_size),
-        )
-    
-    plt.tight_layout(pad=0.1)
-    plt.savefig(
-        output_dir / f"{unique_id}_detected_ROIs.png",
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-    
-    # Add IDs and save another version
-    for i in (0, 1, 2):
-        for k in range(rois.shape[0]):
-            ax[i].text(
-                *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
-            )
-    
-    plt.savefig(
-        output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments
-    
-    Returns
-    -------
-    argparse.Namespace
-        Parsed arguments
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i", "--input-dir", type=str, help="Input directory", default="../data/"
-    )
-    parser.add_argument(
-        "-o", "--output-dir", type=str, help="Output directory", default="../results/"
-    )
-    parser.add_argument(
-        "--tmp_dir",
-        type=str,
-        default="/scratch",
-        help="Directory into which to write temporary files "
-        "produced by Suite2P (default: /scratch)",
-    )
-    parser.add_argument(
-        "--diameter",
-        type=int,
-        default=0,
-        help="Diameter that will be used for cellpose. "
-        "If set to zero, diameter is estimated.",
-    )
-    parser.add_argument(
-        "--init",
-        type=str,
-        default="mean",
-        help="Initialization. Will find masks using "
-        "max/mean: Cellpose on max projection image divided by mean image "
-        "mean: Cellpose on mean image "
-        "enhanced_mean: Cellpose on enhanced mean image "
-        "max: Cellpose on maximum projection image "
-        "sourcery: Suite2p's functional mode without 'sparse_mode' "
-        "sparsery: Suite2p's functional mode with 'sparse_mode' "
-        "greedy_roi: CaImAn's functional 'greedy_roi' mode "
-        "corr_pnr: CaImAn's functional 'corr_pnr' mode ",
-    )
-    parser.add_argument(
-        "--denoise",
-        action="store_true",
-        help="Whether or not binned movie should be denoised before cell detection.",
-    )
-    parser.add_argument(
-        "--cellprob_threshold",
-        type=float,
-        default=0.0,
-        help="Threshold for cell detection that will be used by cellpose.",
-    )
-    parser.add_argument(
-        "--flow_threshold",
-        type=float,
-        default=1.5,
-        help="Flow threshold that will be used by cellpose.",
-    )
-    parser.add_argument(
-        "--spatial_hp_cp",
-        type=int,
-        default=0,
-        help="Window for spatial high-pass filtering of image "
-        "to be used for cellpose.",
-    )
-    parser.add_argument(
-        "--pretrained_model",
-        type=str,
-        default="cyto",
-        help="Path to pretrained model or string for model type "
-        "(can be user’s model).",
-    )
-    parser.add_argument(
-        "--neuropil",
-        type=str,
-        default="mutualinfo",
-        help="How to model the neuropil background, and whether to perform demixing. "
-        "cnmf(-e) demix traces of overlapping ROIs via NMF, suite2p & mutualinfo do not. "
-        "cnmf: low-rank background of CNMF "
-        "cnmf-e: ring model of CNMF-E "
-        "suite2p: neuropil masks and fix weight provided by suite2p "
-        "mutualinfo: neuropil masks from suite2p, but weights based on mutual information ",
-    )
-    parser.add_argument(
-        "--K",
-        type=int,
-        default=5,
-        help="Number of components to be found "
-        "(per patch or whole FOV depending on whether 'rf=None').",
-    )
-    parser.add_argument(
-        "--nb",
-        type=int,
-        default=2,
-        help="Number of background components if 'neuropil=cnmf').",
-    )
-    parser.add_argument(
-        "--rf",
-        type=int,
-        default=40,
-        help="Half-size of patch in pixels. If None, no patches are "
-        "constructed and the whole FOV is processed jointly. If list, "
-        "it should be a list of two elements corresponding to the height "
-        "and width of patches.",
-    )
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=18,
-        help="Overlap between neighboring patches in pixels.",
-    )
-    parser.add_argument(
-        "--tsub",
-        type=int,
-        default=2,
-        help="Temporal downsampling factor during initialization "
-        "with 'greedy_roi' or 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--ssub",
-        type=int,
-        default=2,
-        help="Spatial downsampling factor during initialization "
-        "with 'greedy_roi' or 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--ssub_B",
-        type=int,
-        default=2,
-        help="Additional spatial downsampling factor for background during CNMF-E.",
-    )
-    parser.add_argument(
-        "--merge_thr",
-        type=float,
-        default=0.8,
-        help="Trace correlation threshold for merging two components.",
-    )
-    parser.add_argument(
-        "--min_corr",
-        type=float,
-        default=0.6,
-        help="Minimum value of correlation image for determining a "
-        "candidate component during 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--min_pnr",
-        type=float,
-        default=4,
-        help="Minimum value of psnr image for determining a candidate "
-        "component during 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--snr_thr",
-        type=float,
-        default=1.5,
-        help="Trace SNR threshold for component evaluation. "
-        "Traces with SNR above this will get accepted.",
-    )
-    parser.add_argument(
-        "--rval_thr",
-        type=float,
-        default=0.6,
-        help="Spatial correlation threshold for component evaluation. "
-        "Components with correlation higher than this will get accepted.",
-    )
-    parser.add_argument(
-        "--cnn_thr",
-        type=float,
-        default=0.9,
-        help="CNN classifier threshold for component evaluation. "
-        "Components with score higher than this will get accepted. "
-        "If set to 0 the CNN classifier won't be used.",
-    )
-    parser.add_argument(
-        "--contour_video",
-        action="store_true",
-        help="Create a video overlaying the raw data, ROI activity, "
-        "and remainder with ROI contours.",
-    )
-
-    args = parser.parse_args()
-
-    """Validate command line arguments for consistency"""
-    args.init = args.init.lower()
-    args.neuropil = args.neuropil.lower()
-    if args.neuropil == "cnmf" and args.init == "corr_pnr":
-        logger.info(
-            "'corr_pnr' initialization with neuropil model 'cnmf' does not "
-            "support spatial downsampling. Setting ssub to 1"
-        )
-        args.ssub = 1
-    if args.neuropil == "cnmf-e" and args.init == "greedy_roi":
-        raise NotImplementedError(
-            "Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization"
-        )
-    if args.init in ("greedy_roi", "corr_pnr"):
-        if args.neuropil[:4] != "cnmf":
-            raise NotImplementedError(
-                "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
-            )
-    if args.init in ("1", "2", "3", "4"):  # for backward compatibility
-        args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
-    return args
-
-
 if __name__ == "__main__":
     start_time = dt.now()
     # Set the log level and name the logger
@@ -1042,7 +1120,7 @@ if __name__ == "__main__":
         sys.exit()
     tmp_dir = Path(args.tmp_dir).resolve()
     try:
-        session, data_description, subject = get_metdata(input_dir)
+        session, data_description, subject = get_metadata(input_dir)
     except StopIteration:
         session, data_description, subject = {}, {}, {}
     subject_id = subject.get("subject_id", "")
