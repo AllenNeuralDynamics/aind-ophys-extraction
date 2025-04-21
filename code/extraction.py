@@ -583,7 +583,9 @@ def write_qc_metrics(output_dir: Path, plane: str, num_rois: int) -> None:
         options.append(f"ROI {i} invalid")
         statuses.append(Status.FAIL)
     if plane:
-        reference_image_fp = f"{experiment_id}/extraction/{plane}_detected_ROIs_withIDs.png"
+        reference_image_fp = (
+            f"{experiment_id}/extraction/{plane}_detected_ROIs_withIDs.png"
+        )
         metric_fp = output_dir / f"{plane}_extraction_metric.json"
     else:
         reference_image_fp = f"extraction/detected_ROIs_withIDs.png"
@@ -591,7 +593,7 @@ def write_qc_metrics(output_dir: Path, plane: str, num_rois: int) -> None:
     # Define metric
     if plane:
         metric_name = f"{plane} Detected ROIs"
-    else:  
+    else:
         metric_name = f"Detected ROIs"
     metric = QCMetric(
         name=metric_name,
@@ -841,7 +843,7 @@ if __name__ == "__main__":
         extraction_fp = output_dir / f"{unique_id}_extraction.h5"
         detected_rois_fp = output_dir / f"{unique_id}_detected_ROIs.png"
         detected_rois_with_ids_fp = output_dir / f"{unique_id}__detected_ROIs_withIDs.png"
-    else: 
+    else:
         extraction_fp = output_dir / "extraction.h5"
         detected_rois_fp = output_dir / f"detected_ROIs.png"
         detected_rois_with_ids_fp = output_dir / f"detected_ROIs_withIDs.png"
@@ -883,7 +885,7 @@ if __name__ == "__main__":
         ops = np.load(ops_path, allow_pickle=True)[()]
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
-    
+
     write_data_process(
         vars(args),
         input_fn,
