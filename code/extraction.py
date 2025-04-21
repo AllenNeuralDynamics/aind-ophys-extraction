@@ -769,15 +769,14 @@ def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> Non
         json.dump(json.loads(metric.model_dump_json()), f, indent=4)
 
 
-if __name__ == "__main__":
-    start_time = dt.now()
-    # Set the log level and name the logger
-    logger = logging.getLogger(
-        "Source extraction using Suite2p with or without Cellpose"
-    )
-    logger.setLevel(logging.INFO)
-
-    # Parse command-line arguments
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments
+    
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i", "--input-dir", type=str, help="Input directory", default="../data/"
@@ -953,7 +952,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    # check consistency of args
+
+    """Validate command line arguments for consistency"""
     args.init = args.init.lower()
     args.neuropil = args.neuropil.lower()
     if args.neuropil == "cnmf" and args.init == "corr_pnr":
@@ -971,15 +971,28 @@ if __name__ == "__main__":
             raise NotImplementedError(
                 "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
             )
-    if args.init in ("1", "2", "3", "4"):  # for backwards compatibility
+    if args.init in ("1", "2", "3", "4"):  # for backward compatibility
         args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
-    print(args.init)
+    return args
+
+
+if __name__ == "__main__":
+    start_time = dt.now()
+    # Set the log level and name the logger
+    logger = logging.getLogger(
+        "Source extraction using Suite2p with or without Cellpose"
+    )
+    logger.setLevel(logging.INFO)
+
+    # Parse command-line arguments
+    args = parse_args()
 
     # set env variables for CaImAn
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
     os.environ["CAIMAN_TEMP"] = args.tmp_dir
+
     output_dir = Path(args.output_dir).resolve()
     input_dir = Path(args.input_dir).resolve()
     if next(input_dir.glob("output"), ""):
@@ -1349,7 +1362,8 @@ if __name__ == "__main__":
         # classifier
         f.create_dataset("iscell", data=iscell, dtype="f4")
         # summary images
-        ops = np.load(ops_path, allow_pickle=True)[()]
+        if ops_path:
+            ops = np.load(ops_path, allow_pickle=True)[()]
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
