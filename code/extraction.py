@@ -583,25 +583,27 @@ def write_qc_metrics(output_dir: Path, plane: str, num_rois: int) -> None:
         options.append(f"ROI {i} invalid")
         statuses.append(Status.FAIL)
     if plane:
-        reference_image_fp = f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
-        metric_fp = output_dir / f"{experiment_id}_extraction_metric.json"
+        reference_image_fp = f"{experiment_id}/extraction/{plane}_detected_ROIs_withIDs.png"
+        metric_fp = output_dir / f"{plane}_extraction_metric.json"
     else:
         reference_image_fp = f"extraction/detected_ROIs_withIDs.png"
         metric_fp = output_dir / "extraction_metric.json"
     # Define metric
+    if plane:
+        metric_name = f"{plane} Detected ROIs"
+    else:  
+        metric_name = f"Detected ROIs"
     metric = QCMetric(
-        name=f"{experiment_id} Detected ROIs",
+        name=metric_name,
         description="",
-        reference=str(
-            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
-        ),
+        reference=reference_image_fp,
         status_history=[
             QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
         ],
         value=CheckboxMetric(value=[], options=options, status=statuses),
     )
 
-    with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
+    with open(metric_fp, "w") as f:
         json.dump(json.loads(metric.model_dump_json()), f, indent=4)
 
 
