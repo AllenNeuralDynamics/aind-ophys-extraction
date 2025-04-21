@@ -163,9 +163,11 @@ def write_data_process(
     )
     if isinstance(output_fp, str):
         output_dir = Path(output_fp).parent
+    if unique_id:
+        data_process_fp = output_dir / f"{unique_id}_extraction_data_process.json"
     else:
-        output_dir = output_fp.parent
-    with open(output_dir / f"{unique_id}_extraction_data_process.json", "w") as f:
+        data_process_fp = output_dir / "extraction_data_process.json"
+    with open(data_process_fp, "w") as f:
         json.dump(json.loads(data_proc.model_dump_json()), f, indent=4)
 
 
@@ -194,6 +196,7 @@ def create_virtual_dataset(
         data_shape = f["data"].shape
         dtype = f["data"].dtype
         vsource = h5py.VirtualSource(f["data"])
+        frames_length = 5000
         layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
         start = 0
         for loc in frame_locations:
@@ -556,14 +559,14 @@ def contour_video(
     writer.close()
 
 
-def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
+def write_qc_metrics(output_dir: Path, plane: str, num_rois: int) -> None:
     """Write the QC metrics to a json file
 
     Parameters
     ----------
     output_dir: Path
         output directory
-    experiment_id: str
+    plane: str
         unique plane id
     num_rois: int
         number of ROIs detected in this plane
@@ -579,7 +582,12 @@ def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> Non
     for i in range(num_rois):
         options.append(f"ROI {i} invalid")
         statuses.append(Status.FAIL)
-
+    if plane:
+        reference_image_fp = f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
+        metric_fp = output_dir / f"{experiment_id}_extraction_metric.json"
+    else:
+        reference_image_fp = f"extraction/detected_ROIs_withIDs.png"
+        metric_fp = output_dir / "extraction_metric.json"
     # Define metric
     metric = QCMetric(
         name=f"{experiment_id} Detected ROIs",
@@ -827,7 +835,15 @@ if __name__ == "__main__":
     cellpose_path = str(next(Path(args.tmp_dir).rglob("cellpose.npz"), ""))
     ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy")))
     # write output files
-    with h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f:
+    if unique_id:
+        extraction_fp = output_dir / f"{unique_id}_extraction.h5"
+        detected_rois_fp = output_dir / f"{unique_id}_detected_ROIs.png"
+        detected_rois_with_ids_fp = output_dir / f"{unique_id}__detected_ROIs_withIDs.png"
+    else: 
+        extraction_fp = output_dir / "extraction.h5"
+        detected_rois_fp = output_dir / f"detected_ROIs.png"
+        detected_rois_with_ids_fp = output_dir / f"detected_ROIs_withIDs.png"
+    with h5py.File(extraction_fp, "w") as f:
         # traces
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
         f.create_dataset("traces/neuropil", data=traces_neuropil, compression="gzip")
@@ -865,11 +881,11 @@ if __name__ == "__main__":
         ops = np.load(ops_path, allow_pickle=True)[()]
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
-
+    
     write_data_process(
         vars(args),
         input_fn,
-        output_dir / f"{unique_id}_extraction.h5",
+        extraction_fp,
         unique_id,
         start_time,
         dt.now(),
@@ -897,7 +913,7 @@ if __name__ == "__main__":
         )
     plt.tight_layout(pad=0.1)
     plt.savefig(
-        output_dir / f"{unique_id}_detected_ROIs.png",
+        detected_rois_fp,
         bbox_inches="tight",
         pad_inches=0.02,
     )
@@ -905,7 +921,7 @@ if __name__ == "__main__":
         for k in range(rois.shape[0]):
             ax[i].text(*cm[k], str(k), color="red", fontsize=12 * lw)
     plt.savefig(
-        output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
+        detected_rois_with_ids_fp,
         bbox_inches="tight",
         pad_inches=0.02,
     )
