@@ -99,25 +99,26 @@ def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
     return FCs, r_values, raw_r
 
 
-def make_output_directory(output_dir: Path, experiment_id: str) -> str:
+def make_output_directory(output_dir: Path, plane: str = "") -> str:
     """Creates the output directory if it does not exist
 
     Parameters
     ----------
     output_dir: Path
         output directory
-    experiment_id: str
-        experiment_id number
+    plane: str
+        plane name. If empty, the output directory will be created in the root of the output directory.
 
     Returns
     -------
     output_dir: str
         output directory
     """
-    output_dir = output_dir / experiment_id
-    output_dir.mkdir(exist_ok=True)
-    output_dir = output_dir / "extraction"
-    output_dir.mkdir(exist_ok=True)
+    if not plane:
+        output_dir = output_dir / "extraction"
+    else:
+        output_dir = output_dir / "extraction" / plane
+    output_dir.mkdir(exist_ok=True, parents=True)
     return output_dir
 
 
@@ -700,7 +701,7 @@ if __name__ == "__main__":
     if not data_description or "multiplane" in data_description.get("name", ""):
         unique_id = motion_corrected_fn.parent.parent.name
     else:
-        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+        unique_id = ""
 
     frame_rate = get_frame_rate(session)
 
