@@ -21,6 +21,7 @@ from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import max_corr_image, max_image, mean_image
 from caiman.source_extraction.cnmf import cnmf, params
+from cellpose.models import Cellpose
 from scipy.sparse import coo_matrix, hstack, linalg
 
 
@@ -698,8 +699,19 @@ def format_caiman_output(e, cnmfe, Yr):
     if len(data):
         data = np.concatenate(data)
         coords = np.hstack(coords)
-    # TODO: save background, use caiman's classifier for iscell
-    return traces_corrected, traces_neuropil, traces_roi, data, coords
+    # maybe TODO: save background
+    iscell = np.zeros((e.A.shape[1], 2), dtype="f4")
+    iscell[e.idx_components, 0] = 1
+    iscell[:, 1] = e.cnn_preds if hasattr(e, "cnn_preds") else np.nan
+    return traces_corrected, traces_neuropil, traces_roi, data, coords, iscell
+
+
+def estimate_gSig(diameter, img):  # TODO: check factor 1/2 on groundtruth data
+    if diameter == 0:
+        logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
+        return Cellpose().sz.eval(img)[0] / 2
+    else:
+        return args.diameter / 2
 
 
 if __name__ == "__main__":
@@ -904,10 +916,6 @@ if __name__ == "__main__":
             raise NotImplementedError(
                 "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
             )
-        if args.diameter == 0:
-            raise ValueError(
-                "'diameter' has to be positive for 'greedy_roi' or 'corr_pnr' initialization"
-            )
     if args.init in ("1", "2", "3", "4"):  # for backwards compatibility
         args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
     print(args.init)
@@ -958,8 +966,13 @@ if __name__ == "__main__":
         # now load the file
         Yr, dims, T = caiman.load_memmap(fname_new)
         movie = np.reshape(Yr.T, [T] + list(dims), order="F")
+        with h5py.File(str(motion_corrected_fn), "r") as open_vid:
+            ops = {
+                "meanImg": mean_image(open_vid["data"]),
+                "max_proj": max_image(open_vid["data"]),
+            }
         # Set params
-        gSig = args.diameter / 2
+        gSig = estimate_gSig(args.diameter, ops["meanImg"])
         params_dict = {
             "fnames": fname_new,
             "K": args.K,
@@ -993,12 +1006,7 @@ if __name__ == "__main__":
                 cnm = cnm.refit(movie, dview=pool)
             cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
             cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
-        iscell = np.zeros((cnm.estimates.A.shape[1], 2), dtype="f4")
-        iscell[cnm.estimates.idx_components, 0] = 1
-        iscell[:, 1] = (
-            cnm.estimates.cnn_preds if cnm.params.quality["use_cnn"] else np.nan
-        )
-        traces_corrected, traces_neuropil, traces_roi, data, coords = (
+        traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
             format_caiman_output(cnm.estimates, cnmfe, Yr)
         )
         neuropil_coords, keys = [], []
@@ -1141,7 +1149,9 @@ if __name__ == "__main__":
                 )
                 cnmfe = args.neuropil == "cnmf-e"
                 # set parameters
-                gSig = 6  # TODO: set gSig based on suite2p diameter estimate
+                ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy"), ""))
+                ops = np.load(ops_path, allow_pickle=True)[()]
+                gSig = estimate_gSig(args.diameter, ops["meanImg"])
                 opts = params.CNMFParams(
                     params_dict={
                         "K": None,
@@ -1184,10 +1194,7 @@ if __name__ == "__main__":
                     cnm.estimates.dims = dims
                     cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
                     cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
-                iscell = np.zeros((cnm.estimates.A.shape[1], 2), dtype="f4")
-                iscell[cnm.estimates.idx_components, 0] = 1
-                iscell[:, 1] = cnm.estimates.cnn_preds
-                traces_corrected, traces_neuropil, traces_roi, data, coords = (
+                traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
                     format_caiman_output(cnm.estimates, cnmfe, Yr)
                 )
                 neuropil_coords, keys = [], []
