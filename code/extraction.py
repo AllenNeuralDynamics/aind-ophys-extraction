@@ -697,10 +697,7 @@ if __name__ == "__main__":
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
-    if not data_description or "multiplane" in data_description.get("name", ""):
-        unique_id = motion_corrected_fn.parent.parent.name
-    else:
-        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
+    unique_id = motion_corrected_fn.parent.parent.name
 
     frame_rate = get_frame_rate(session)
 
