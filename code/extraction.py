@@ -1226,7 +1226,7 @@ if __name__ == "__main__":
     start_time = dt.now()
     # Set the log level and name the logger
     logger = logging.getLogger(
-        "Source extraction using Suite2p with or without Cellpose"
+        "Source extraction using a combination of Cellpose, Suite2p, and CaImAn"
     )
     logger.setLevel(logging.INFO)
 

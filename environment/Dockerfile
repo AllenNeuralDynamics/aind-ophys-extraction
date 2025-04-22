@@ -34,3 +34,5 @@ RUN pip3 install -U --no-cache-dir \
     git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output \
     aind-log-utils \
     aind-qcportal-schema
+
+RUN caimanmanager install
