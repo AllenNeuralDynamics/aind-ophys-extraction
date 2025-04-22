@@ -1411,9 +1411,10 @@ if __name__ == "__main__":
         f.create_dataset("rois/data", data=data, compression="gzip")
         shape = np.array([len(traces_roi), *dims], dtype=np.int16)
         f.create_dataset("rois/shape", data=shape)  # neurons x height x width
-        f.create_dataset(
-            "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
-        )
+        if neuropil_coords is not []:
+            f.create_dataset(
+                "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
+            )
         # cellpose
         if cellpose_path:
             with np.load(cellpose_path) as cp:
