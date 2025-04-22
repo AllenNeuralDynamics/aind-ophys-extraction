@@ -2,12 +2,11 @@ import argparse
 import json
 import logging
 import os
+import sys
 from datetime import datetime as dt
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
 from typing import Tuple, Union
-from warnings import warn
-import sys
 
 import caiman
 import cv2
@@ -268,7 +267,8 @@ def get_metadata(input_dir: Path) -> Tuple[dict, dict, dict]:
 
 
 def get_frame_rate(session: dict) -> float:
-    """Get the frame rate from the session metadata
+    """Attempt to pull frame rate from session.json
+    Returns none if frame rate not in session.json
 
     Parameters
     ----------
@@ -278,9 +278,18 @@ def get_frame_rate(session: dict) -> float:
     Returns
     -------
     frame_rate: float
-        frame rate
+        frame rate in Hz
     """
-    return float(session["data_streams"][0]["ophys_fovs"][0]["frame_rate"])
+    frame_rate_hz = None
+    for i in session.get("data_streams", ""):
+        if i.get("ophys_fovs", ""):
+            frame_rate_hz = i["ophys_fovs"][0]["frame_rate"]
+            break
+    if frame_rate_hz is None:
+        raise ValueError("Frame rate not found in session.json")
+    if isinstance(frame_rate_hz, str):
+        frame_rate_hz = float(frame_rate_hz)
+    return frame_rate_hz
 
 
 def make_output_directory(output_dir: Path, experiment_id: str) -> str:
@@ -350,6 +359,47 @@ def write_data_process(
         output_dir = output_fp.parent
     with open(output_dir / f"{unique_id}_extraction_data_process.json", "w") as f:
         json.dump(json.loads(data_proc.model_dump_json()), f, indent=4)
+
+
+def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
+    """Write the QC metrics to a json file
+
+    Parameters
+    ----------
+    output_dir: Path
+        output directory
+    experiment_id: str
+        unique plane id
+    num_rois: int
+        number of ROIs detected in this plane
+    """
+
+    # Build options and statuses
+    options = []
+    statuses = []
+
+    options.append("Missing ROIs")
+    statuses.append(Status.FAIL)
+
+    for i in range(num_rois):
+        options.append(f"ROI {i} invalid")
+        statuses.append(Status.FAIL)
+
+    # Define metric
+    metric = QCMetric(
+        name=f"{experiment_id} Detected ROIs",
+        description="",
+        reference=str(
+            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
+        ),
+        status_history=[
+            QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
+        ],
+        value=CheckboxMetric(value=[], options=options, status=statuses),
+    )
+
+    with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
+        json.dump(json.loads(metric.model_dump_json()), f, indent=4)
 
 
 # Data Handling Functions
@@ -457,26 +507,6 @@ def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) ->
         with h5py.File(vds_file, "w") as fout:
             fout.create_virtual_dataset("data", layout)
     return vds_file
-
-
-def get_frame_rate(session: dict) -> float:
-    """Attempt to pull frame rate from session.json
-    Returns none if frame rate not in session.json
-    Returns
-    -------
-    frame_rate: float
-        frame rate in Hz
-    """
-    frame_rate_hz = None
-    for i in session.get("data_streams", ""):
-        if i.get("ophys_fovs", ""):
-            frame_rate_hz = i["ophys_fovs"][0]["frame_rate"]
-            break
-    if frame_rate_hz is None:
-        raise ValueError("Frame rate not found in session.json")
-    if isinstance(frame_rate_hz, str):
-        frame_rate_hz = float(frame_rate_hz)
-    return frame_rate_hz
 
 
 def create_mmap_file(
@@ -979,55 +1009,7 @@ def format_caiman_output(e, cnmfe, Yr):
     return traces_corrected, traces_neuropil, traces_roi, data, coords, iscell
 
 
-def estimate_gSig(diameter, img):  # TODO: check factor 1/2 on groundtruth data
-    if diameter == 0:
-        logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
-        return Cellpose().sz.eval(img)[0] / 2
-    else:
-        return args.diameter / 2
-
-
-def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
-    """Write the QC metrics to a json file
-
-    Parameters
-    ----------
-    output_dir: Path
-        output directory
-    experiment_id: str
-        unique plane id
-    num_rois: int
-        number of ROIs detected in this plane
-    """
-
-    # Build options and statuses
-    options = []
-    statuses = []
-
-    options.append("Missing ROIs")
-    statuses.append(Status.FAIL)
-
-    for i in range(num_rois):
-        options.append(f"ROI {i} invalid")
-        statuses.append(Status.FAIL)
-
-    # Define metric
-    metric = QCMetric(
-        name=f"{experiment_id} Detected ROIs",
-        description="",
-        reference=str(
-            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
-        ),
-        status_history=[
-            QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
-        ],
-        value=CheckboxMetric(value=[], options=options, status=statuses),
-    )
-
-    with open(output_dir / f"{experiment_id}_extraction_metric.json", "w") as f:
-        json.dump(json.loads(metric.model_dump_json()), f, indent=4)
-
-
+# Visualization Functions
 def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img):
     """Save summary images with ROI contours
 
@@ -1287,49 +1269,6 @@ if __name__ == "__main__":
 
     frame_rate = get_frame_rate(session)
     output_dir = make_output_directory(output_dir, unique_id)
-    
-    # Run Cellpose via Suite2p to get ROI seeds
-    # =========================================
-    # Set suite2p args.
-    suite2p_args = suite2p.default_ops()
-    # Overwrite the parameters for suite2p that are exposed
-    suite2p_args["diameter"] = args.diameter
-    suite2p_args["anatomical_only"] = args.anatomical_only
-    suite2p_args["cellprob_threshold"] = args.cellprob_threshold
-    suite2p_args["flow_threshold"] = args.flow_threshold
-    suite2p_args["spatial_hp_cp"] = args.spatial_hp_cp
-    suite2p_args["pretrained_model"] = args.pretrained_model
-    suite2p_args["denoise"] = args.denoise
-    suite2p_args["save_path0"] = args.tmp_dir
-    # Here we overwrite the parameters for suite2p that will not change in our
-    # processing pipeline. These are parameters that are not exposed to
-    # minimize code length. Those are not set to default.
-    suite2p_args["h5py"] = str(motion_corrected_fn)
-    suite2p_args["data_path"] = []
-    suite2p_args["roidetect"] = True
-    suite2p_args["do_registration"] = 0
-    suite2p_args["spikedetect"] = False
-    suite2p_args["fs"] = frame_rate
-    suite2p_args["neuropil_extract"] = True
-
-    # determine nbinned from bin_duration and fs
-    suite2p_args["bin_duration"] = 3.7  # The duration of time (in seconds) that
-    # should be considered 1 bin for Suite2P ROI detection purposes. Requires
-    # a valid value for 'fs' in order to derive an
-    # nbinned Suite2P value. This allows consistent temporal downsampling
-    # across movies with different lengths and/or frame rates.
-    with h5py.File(suite2p_args["h5py"], "r") as f:
-        nframes = f["data"].shape[0]
-    bin_size = suite2p_args["bin_duration"] * suite2p_args["fs"]
-    suite2p_args["nbinned"] = int(nframes / bin_size)
-    logger.info(
-        f"Movie has {nframes} frames collected at "
-        f"{suite2p_args['fs']} Hz. "
-        "To get a bin duration of "
-        f"{suite2p_args['bin_duration']} "
-        f"seconds, setting nbinned to "
-        f"{suite2p_args['nbinned']}."
-    )
 
     n_jobs = tmp if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
 
