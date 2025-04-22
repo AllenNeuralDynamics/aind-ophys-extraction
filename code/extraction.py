@@ -629,24 +629,24 @@ def get_contours(rois, thr=0.2, thr_method="max"):
     return coordinates
 
 
-def estimate_gSig(diameter, img, fac=2.35482):
-    """Estimate Gaussian sigma for CaImAn based on cell diameter
+def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> float:
+    """Estimate Gaussian sigma for CaImAn based on cell diameter.
 
     Parameters
     ----------
-    diameter : int
-        Cell diameter in pixels; if 0, will be automatically estimated with Cellpose
+    diameter : float
+        Cell diameter in pixels; if 0, it will be automatically estimated with Cellpose.
     img : np.ndarray
-        Mean image used for automatic diameter estimation if needed
+        Mean image used for automatic diameter estimation if needed.
     fac : float
-        Factor by which to divide Cellpose's diameter estimate
-        Based on jGCaMP data a value between 2 and 2.5 is a good choice
-        Default is 2 sqrt(2 ln(2)) based on the FWHM of a Gaussian
+        Factor by which to divide Cellpose's diameter estimate.
+        Based on jGCaMP data, a value between 2 and 2.5 is a good choice.
+        Default is 2 sqrt(2 ln(2)), based on the FWHM of a Gaussian.
 
     Returns
     -------
     float
-        Estimated Gaussian sigma (half the cell diameter)
+        Estimated Gaussian sigma.
     """
     if diameter == 0:
         logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
@@ -656,9 +656,13 @@ def estimate_gSig(diameter, img, fac=2.35482):
 
 
 # Trace Processing Functions
-def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[0, 2]):
-    """
-    Get the r value that minimizes the mutual information between
+def get_r_from_min_mi(
+    raw_trace: np.ndarray,
+    neuropil_trace: np.ndarray,
+    resolution: float = 0.01,
+    r_test_range: list[float] = [0, 2],
+) -> tuple[float, np.ndarray, np.ndarray]:
+    """Get the r value that minimizes the mutual information between
     the corrected trace and the neuropil trace.
 
     Parameters
@@ -675,7 +679,7 @@ def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[
     Returns
     -------
     r_best : float
-        r value that minimizes the mutual information between
+        The r value that minimizes the mutual information between
         the corrected trace and the neuropil trace.
     mi_iters : np.ndarray
         1D array of mutual information values for each r value tested.
@@ -696,27 +700,29 @@ def get_r_from_min_mi(raw_trace, neuropil_trace, resolution=0.01, r_test_range=[
     return r_best, mi_iters, r_iters
 
 
-def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
-    """
-    Get the corrected trace from the raw trace and neuropil trace using the given r values.
+def get_FC_from_r(
+    raw_trace: np.ndarray, neuropil_trace: np.ndarray, min_r_count: int = 5
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Get the corrected trace from the raw trace and neuropil trace using optimal r values.
 
     Parameters
     ----------
     raw_trace : np.ndarray
-        1D array of raw trace values.
+        2D array of raw trace values (ROIs x time).
     neuropil_trace : np.ndarray
-        1D array of neuropil trace values.
+        2D array of neuropil trace values (ROIs x time).
     min_r_count : int
-        Minimum number of r values to use for mean r value calculation.
+        Minimum number of valid r values (< 1) required to calculate a mean r value.
+        If fewer valid values are available, a default of 0.8 is used.
 
     Returns
     -------
     FCs : np.ndarray
-        1D array of corrected traces for each r value.
+        2D array of corrected traces for each ROI (ROIs x time).
     r_values : np.ndarray
         1D array of r values used for the correction.
     raw_r : np.ndarray
-        1D array of r values that minimized the mutual information.
+        1D array of r values that minimized the mutual information before thresholding.
     """
     r_values = np.zeros(raw_trace.shape[0])
     FCs = np.zeros_like(raw_trace)
@@ -930,7 +936,7 @@ def format_caiman_output(e, cnmfe, Yr):
             0.8 * traces_neuropil
         )  # TODO: check factor on groundtruth data
     traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
-    # convert ROIs to sparse COO 3D-tensor  a la https://sparse.pydata.org/en/stable/construct.html
+    # convert ROIs to sparse COO 3D-tensor (https://sparse.pydata.org/en/stable/construct.html)
     data = []
     coords = []
     for i in range(e.A.shape[1]):
@@ -971,12 +977,10 @@ def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr
     cm = com(rois)
     coordinates = get_contours(rois)
     dims = rois.shape[1:]
-
     # Create plots
     x_size = 17 * max(dims[1] / dims[0], 0.4)
     fix, ax = plt.subplots(1, 3, figsize=(x_size, 6))
     lw = min(512 / max(*dims), 3)
-
     for i, img in enumerate((ops["meanImg"], ops["max_proj"], corr_img)):
         vmin, vmax = np.nanpercentile(img, (1, 99))
         ax[i].imshow(img, interpolation=None, cmap="gray", vmin=vmin, vmax=vmax)
@@ -987,21 +991,18 @@ def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr
             ("mean image", "max image", "correlation image")[i],
             fontsize=min(24, 2.4 + 2 * x_size),
         )
-
     plt.tight_layout(pad=0.1)
     plt.savefig(
         output_dir / f"{unique_id}_detected_ROIs.png",
         bbox_inches="tight",
         pad_inches=0.02,
     )
-
     # Add IDs and save another version
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
             ax[i].text(
                 *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
             )
-
     plt.savefig(
         output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
         bbox_inches="tight",
@@ -1320,8 +1321,7 @@ if __name__ == "__main__":
                     traces_corrected, r_values, raw_r = get_FC_from_r(
                         traces_roi, traces_neuropil
                     )
-                # convert ROIs to sparse COO 3D-tensor a la
-                # https://sparse.pydata.org/en/stable/construct.html
+                # convert ROIs to sparse COO 3D-tensor
                 data = []
                 coords = []
                 neuropil_coords = []
