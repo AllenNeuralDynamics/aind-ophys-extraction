@@ -3,14 +3,14 @@ FROM registry.codeocean.allenneuraldynamics.org/codeocean/mambaforge3:23.1.0-4-p
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-ARG GIT_ASKPASS
-ARG GIT_ACCESS_TOKEN
-COPY git-askpass /
-
-ENV EXTRACTION_URL=https://github.com/AllenNeuralDynamics/aind-ophys-extraction-suite2p
+ENV EXTRACTION_URL=https://github.com/AllenNeuralDynamics/aind-ophys-extraction
 ENV PIPELINE_URL="https://codeocean.allenneuraldynamics.org/capsule/5619253/tree"
 ENV PIPELINE_VERSION="1.0"
 ENV VERSION="5.0"
+
+ARG GIT_ASKPASS
+ARG GIT_ACCESS_TOKEN
+COPY git-askpass /
 
 RUN ["apt-get", "update"]
 RUN ["apt-get", "install", "-y", "vim"]
