@@ -629,7 +629,7 @@ def get_contours(rois, thr=0.2, thr_method="max"):
     return coordinates
 
 
-def estimate_gSig(diameter, img):
+def estimate_gSig(diameter, img, fac=2.35482):
     """Estimate Gaussian sigma for CaImAn based on cell diameter
 
     Parameters
@@ -638,6 +638,10 @@ def estimate_gSig(diameter, img):
         Cell diameter in pixels; if 0, will be automatically estimated with Cellpose
     img : np.ndarray
         Mean image used for automatic diameter estimation if needed
+    fac : float
+        Factor by which to divide Cellpose's diameter estimate
+        Based on jGCaMP data a value between 2 and 2.5 is a good choice
+        Default is 2 sqrt(2 ln(2)) based on the FWHM of a Gaussian
 
     Returns
     -------
@@ -646,9 +650,9 @@ def estimate_gSig(diameter, img):
     """
     if diameter == 0:
         logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
-        return Cellpose().sz.eval(img)[0] / 2
+        return Cellpose().sz.eval(img)[0] / fac
     else:
-        return args.diameter / 2
+        return args.diameter / fac
 
 
 # Trace Processing Functions
@@ -726,6 +730,144 @@ def get_FC_from_r(raw_trace, neuropil_trace, min_r_count=5):
     for roi in range(raw_trace.shape[0]):
         FCs[roi] = raw_trace[roi] - r_values[roi] * neuropil_trace[roi]
     return FCs, r_values, raw_r
+
+
+# CaImAn Functions
+def build_CNMFParams(args, ops, cnmfe, Ain=None, dims=None):
+    """Build parameter dictionary for CaImAn extraction.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command line arguments
+    ops : dict
+        Dictionary with summary images and other data
+    cnmfe : bool
+        Whether to use CNMF-E (True) or standard CNMF (False)
+    Ain : scipy.sparse matrix, optional
+        Initial spatial components (default: None)
+    dims : tuple, optional
+        Dimensions of data (needed for seed_method if Ain is provided)
+
+    Returns
+    -------
+    dict
+        Parameter dictionary for CaImAn
+    """
+    # Estimate Gaussian sigma based on cell diameter
+    gSig = estimate_gSig(args.diameter, ops["meanImg"])
+
+    # Base parameters (common to both initialization methods)
+    params_dict = {
+        "p": 1,
+        "nb": 0 if cnmfe else args.nb,
+        "only_init": cnmfe,
+        "gSig": (gSig, gSig),
+        "gSiz": (int(round(gSig * (4 if cnmfe else 2) + 1)),) * 2,
+        "ssub_B": args.ssub_B,
+        "normalize_init": not cnmfe,
+        "center_psf": cnmfe,
+        "ring_size_factor": 1.5 if cnmfe else None,
+        "min_SNR": args.snr_thr,
+        "rval_thr": args.rval_thr,
+        "use_cnn": args.cnn_thr > 0,
+        "min_cnn_thr": args.cnn_thr,
+    }
+
+    # Additional parameters specific to initialization method
+    if Ain is None:
+        # For initial ROI detection (greedy_roi or corr_pnr)
+        params_dict.update(
+            {
+                "K": args.K,
+                "method_init": args.init,
+                "rf": args.rf,
+                "stride": args.stride,
+                "ssub": args.ssub,
+                "tsub": args.tsub,
+                "min_corr": args.min_corr,
+                "min_pnr": args.min_pnr,
+                "merge_thr": args.merge_thr,
+            }
+        )
+    else:
+        # For refining Suite2p ROIs
+        params_dict.update(
+            {
+                "K": None,
+                "method_init": "corr_pnr" if cnmfe else "greedy_roi",
+                "ssub": 1,
+                "tsub": 1,
+                "min_corr": 0,
+                "min_pnr": 0,
+                "merge_thr": 1,
+                "init_iter": 1,
+            }
+        )
+
+        # Add seed method if dims is provided
+        if Ain is not None and dims is not None:
+            params_dict["seed_method"] = caiman.base.rois.com(Ain, *dims)
+
+    return params.CNMFParams(params_dict=params_dict)
+
+
+def run_caiman_extraction(input_fn, unique_id, args, ops, Ain=None, n_jobs=None):
+    """Run CaImAn to extract neural activity traces.
+
+    Parameters
+    ----------
+    input_fn : str or Path
+        Path to the input HDF5 file containing the source dataset.
+    unique_id : str
+        Unique identifier for the session.
+    args : argparse.Namespace
+        Command line arguments.
+    ops : dict
+        Dictionary with summary images and other data.
+    Ain : scipy.sparse matrix, optional
+        Initial spatial components (default: None).
+        If None, will perform initial ROI detection.
+        If provided, will refine the provided ROIs.
+    n_jobs : int, optional
+        Number of parallel processes to use.
+
+    Returns
+    -------
+    tuple
+        Tuple containing (traces_corrected, traces_neuropil, traces_roi, data, coords, iscell)
+    """
+    logger.info(f"running CaImAn v{caiman.__version__}")
+    # Determine if using CNMF-E
+    cnmfe = args.neuropil == "cnmf-e"
+    # Create mmap file
+    fname_new = create_mmap_file(input_fn, unique_id, args.tmp_dir)
+    # Load the file
+    Yr, dims, T = caiman.load_memmap(fname_new)
+    movie = np.reshape(Yr.T, [T] + list(dims), order="F")
+    # Create parameter object
+    opts = build_CNMFParams(args, ops, cnmfe, Ain, dims)
+    # Create Ain to use
+    Ain_processed = None if cnmfe or Ain is None else (Ain > 0).toarray()
+    # Run CNMF
+    with Pool(n_jobs) as pool:
+        cnm = cnmf.CNMF(
+            n_processes=pool._processes,
+            dview=pool,
+            params=opts,
+            Ain=Ain_processed,
+        )
+        cnm.fit(movie)
+        # For standard CNMF, refit to improve results
+        if not cnmfe and Ain is None:
+            cnm = cnm.refit(movie, dview=pool)
+        # Make sure dims are set and gSig is integer for component evaluation
+        cnm.estimates.dims = dims
+        cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
+        # Evaluate components
+        cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
+    # Return formatted output
+    return format_caiman_output(cnm.estimates, cnmfe, Yr)
 
 
 def format_caiman_output(e, cnmfe, Yr):
@@ -1076,55 +1218,16 @@ if __name__ == "__main__":
     if args.init in ("greedy_roi", "corr_pnr"):
         # Run CaImAn
         # ==========
-        # whether to use CNMF-E ring model (or CNMF low rank model)
-        cnmfe = args.neuropil == "cnmf-e"
-        # create mmap file
-        fname_new = create_mmap_file(input_fn, unique_id, args.tmp_dir)
-        # now load the file
-        Yr, dims, T = caiman.load_memmap(fname_new)
-        movie = np.reshape(Yr.T, [T] + list(dims), order="F")
         with h5py.File(str(motion_corrected_fn), "r") as open_vid:
+            dims = open_vid["data"][0].shape
             ops = {
                 "meanImg": mean_image(open_vid["data"]),
                 "max_proj": max_image(open_vid["data"]),
             }
-        # Set params
-        gSig = estimate_gSig(args.diameter, ops["meanImg"])
-        params_dict = {
-            "fnames": fname_new,
-            "K": args.K,
-            "p": 1,
-            "nb": 0 if cnmfe else args.nb,
-            "rf": args.rf,
-            "stride": args.stride,
-            "only_init": cnmfe,
-            "gSig": (gSig, gSig),
-            "gSiz": (int(round(gSig * (4 if cnmfe else 2) + 1)),) * 2,
-            "ssub": args.ssub,
-            "ssub_B": args.ssub_B,
-            "tsub": args.tsub,
-            "merge_thr": args.merge_thr,
-            "method_init": args.init,
-            "min_corr": args.min_corr,
-            "min_pnr": args.min_pnr,
-            "normalize_init": not cnmfe,
-            "center_psf": cnmfe,
-            "ring_size_factor": 1.5 if cnmfe else None,
-            "min_SNR": args.snr_thr,
-            "rval_thr": args.rval_thr,
-            "use_cnn": args.cnn_thr > 0,
-            "min_cnn_thr": args.cnn_thr,
-        }
-        opts = params.CNMFParams(params_dict=params_dict)
-        with Pool(n_jobs) as pool:
-            cnm = cnmf.CNMF(n_processes=pool._processes, params=opts, dview=pool)
-            cnm.fit(movie)
-            if not cnmfe:
-                cnm = cnm.refit(movie, dview=pool)
-            cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
-            cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
         traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
-            format_caiman_output(cnm.estimates, cnmfe, Yr)
+            run_caiman_extraction(
+                input_fn, unique_id, args, ops, Ain=None, n_jobs=n_jobs
+            )
         )
         neuropil_coords, keys = [], []
 
@@ -1255,7 +1358,6 @@ if __name__ == "__main__":
             else:
                 # Run CaImAn to update ROIs and extract traces
                 # ============================================
-                logger.info(f"running CaImAn v{caiman.__version__}")
                 Ain = hstack(
                     [
                         coo_matrix((roi["lam"], (roi["ypix"], roi["xpix"])), shape=dims)
@@ -1264,55 +1366,12 @@ if __name__ == "__main__":
                         for roi in suite2p_stats
                     ]
                 )
-                cnmfe = args.neuropil == "cnmf-e"
-                # set parameters
                 ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy"), ""))
                 ops = np.load(ops_path, allow_pickle=True)[()]
-                gSig = estimate_gSig(args.diameter, ops["meanImg"])
-                opts = params.CNMFParams(
-                    params_dict={
-                        "K": None,
-                        "p": 1,
-                        "nb": 0 if cnmfe else 2,
-                        "only_init": cnmfe,
-                        "merge_thr": 1,
-                        "method_init": "corr_pnr" if cnmfe else "greedy_roi",
-                        "gSig": (gSig,) * 2,
-                        "gSiz": (int(round(gSig * (4 if cnmfe else 2) + 1)),) * 2,
-                        "normalize_init": False,
-                        "center_psf": True,
-                        "init_iter": 1,
-                        "tsub": 1,
-                        "ssub": 1,
-                        "ssub_B": args.ssub_B,
-                        "min_corr": 0,
-                        "min_pnr": 0,
-                        "seed_method": caiman.base.rois.com(Ain, *dims),
-                        "min_SNR": args.snr_thr,
-                        "rval_thr": args.rval_thr,
-                        "use_cnn": args.cnn_thr > 0,
-                        "min_cnn_thr": args.cnn_thr,
-                    }
-                )
-                # create mmap file
-                fname_new = create_mmap_file(input_fn, unique_id, args.tmp_dir)
-                # now load the file
-                Yr, dims, T = caiman.load_memmap(fname_new)
-                movie = np.reshape(Yr.T, [T] + list(dims), order="F")
-                # fit
-                with Pool(n_jobs) as pool:
-                    cnm = cnmf.CNMF(
-                        n_processes=pool._processes,
-                        dview=pool,
-                        params=opts,
-                        Ain=None if cnmfe else (Ain > 0).toarray(),
-                    )
-                    cnm.fit(movie)
-                    cnm.estimates.dims = dims
-                    cnm.params.init["gSig"] = tuple(map(int, cnm.params.init["gSig"]))
-                    cnm.estimates.evaluate_components(movie, cnm.params, dview=pool)
                 traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
-                    format_caiman_output(cnm.estimates, cnmfe, Yr)
+                    run_caiman_extraction(
+                        input_fn, unique_id, args, ops, Ain=Ain, n_jobs=n_jobs
+                    )
                 )
                 neuropil_coords, keys = [], []
 
@@ -1325,9 +1384,9 @@ if __name__ == "__main__":
                 raw_r = []
             keys = []
 
+    # write output files
     cellpose_path = str(next(Path(args.tmp_dir).rglob("cellpose.npz"), ""))
     ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy"), ""))
-    # write output files
     with h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f:
         # traces
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
