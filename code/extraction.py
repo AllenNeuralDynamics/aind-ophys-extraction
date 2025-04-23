@@ -114,10 +114,8 @@ def make_output_directory(output_dir: Path, experiment_id: str) -> str:
     output_dir: str
         output directory
     """
-    output_dir = output_dir / experiment_id
-    output_dir.mkdir(exist_ok=True)
-    output_dir = output_dir / "extraction"
-    output_dir.mkdir(exist_ok=True)
+    output_dir = output_dir / experiment_id / "extraction"
+    output_dir.mkdir(exist_ok=True, parents=True)
     return output_dir
 
 
@@ -193,6 +191,7 @@ def create_virtual_dataset(
         data_shape = f["data"].shape
         dtype = f["data"].dtype
         vsource = h5py.VirtualSource(f["data"])
+        frames_length=5000
         layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
         start = 0
         for loc in frame_locations:
@@ -692,13 +691,11 @@ if __name__ == "__main__":
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
         input_fn = next(input_dir.rglob("*registered.h5"))
-    parent_directory = input_fn.parent
+    unique_id = input_fn.parent.parent.name
     if session is not None and "Bergamo" in session["rig_id"]:
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
-    unique_id = motion_corrected_fn.parent.parent.name
-
     frame_rate = get_frame_rate(session)
 
     output_dir = make_output_directory(output_dir, unique_id)
