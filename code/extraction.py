@@ -191,7 +191,6 @@ def create_virtual_dataset(
         data_shape = f["data"].shape
         dtype = f["data"].dtype
         vsource = h5py.VirtualSource(f["data"])
-        frames_length=5000
         layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
         start = 0
         for loc in frame_locations:
