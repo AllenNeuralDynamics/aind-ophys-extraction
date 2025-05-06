@@ -1360,17 +1360,11 @@ if __name__ == "__main__":
         input_fn = next(input_dir.rglob("*decrosstalk.h5"))
     else:
         input_fn = next(input_dir.rglob("*registered.h5"))
-    parent_directory = input_fn.parent
-    if session is not None and "Bergamo" in session["rig_id"]:
+    unique_id = input_fn.parent.parent.name
+    if session != {} and "Bergamo" in session["rig_id"]:
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
-    if not data_description or "multiplane" in data_description.get("name", ""):
-        unique_id = motion_corrected_fn.name.split("_decrosstalk")[0].split(
-            "_registered"
-        )[0]
-    else:
-        unique_id = "_".join(str(data_description["name"]).split("_")[-3:])
 
     frame_rate = get_frame_rate(session)
     output_dir = make_output_directory(output_dir, unique_id)
