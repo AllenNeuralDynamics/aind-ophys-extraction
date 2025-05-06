@@ -27,6 +27,7 @@ RUN pip3 install -U --no-cache-dir \
     cellpose==3.0 \
     h5py \
     pydantic==2.8.2 \
+    pydantic_settings \
     sbxreader \
     scikit-image \
     sparse \

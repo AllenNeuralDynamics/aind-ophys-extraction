@@ -25,217 +25,298 @@ from aind_ophys_utils.summary_images import max_corr_image, max_image, mean_imag
 from aind_qcportal_schema.metric_value import CheckboxMetric
 from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 from scipy.sparse import coo_matrix, hstack, linalg
 
 
+class ExtractionSettings(BaseSettings):
+    """Settings for extraction pipeline using pydantic-settings."""
+
+    # Basic parameters
+    input_dir: Path = Field(
+        default=Path("../data/"),
+        description="Directory containing the input data files.",
+    )
+    output_dir: Path = Field(
+        default=Path("../results/"),
+        description="Directory where output files will be saved.",
+    )
+    tmp_dir: Path = Field(
+        default=Path("/scratch"),
+        description="Directory for temporary files created during processing.",
+    )
+
+    # Cell detection parameters
+    diameter: int = Field(
+        default=0,
+        description=(
+            "Expected diameter of cells in pixels. "
+            "If set to 0, CellPose will estimate the diameter from the data."
+        ),
+    )
+    init: str = Field(
+        default="mean",
+        description=(
+            "Initialization method for finding masks. Options: "
+            "max/mean: Cellpose on max projection image divided by mean image; "
+            "mean: Cellpose on mean image; "
+            "enhanced_mean: Cellpose on enhanced mean image; "
+            "max: Cellpose on maximum projection image; "
+            "sourcery: Suite2p's functional mode without 'sparse_mode'; "
+            "sparsery: Suite2p's functional mode with 'sparse_mode'; "
+            "greedy_roi: CaImAn's functional 'greedy_roi' mode; "
+            "corr_pnr: CaImAn's functional 'corr_pnr' mode."
+        ),
+    )
+    denoise: bool = Field(
+        default=False,
+        description=(
+            "If True, applies denoising to the binned movie before cell detection."
+        ),
+    )
+    cellprob_threshold: float = Field(
+        default=0.0,
+        description=(
+            "Probability threshold for CellPose cell detection. Increase for fewer "
+            "false positives, decrease for higher sensitivity."
+        ),
+    )
+    flow_threshold: float = Field(
+        default=1.5,
+        description=(
+            "Flow threshold used by CellPose during cell detection. Higher values "
+            "result in fewer cells."
+        ),
+    )
+    spatial_hp_cp: int = Field(
+        default=0,
+        description=(
+            "Window size for spatial high-pass filtering of the image before CellPose "
+            "detection. Set to 0 to disable filtering."
+        ),
+    )
+    pretrained_model: str = Field(
+        default="cyto",
+        description=(
+            "CellPose pretrained model to use. Common options: 'cyto' (standard model), "
+            "'cyto2' (improved model), or path to a custom model file."
+        ),
+    )
+
+    # Neuropil parameters
+    neuropil: str = Field(
+        default="mutualinfo",
+        description=(
+            "Method to estimate and subtract neuropil contamination, and whether to "
+            "perform demixing. cnmf(-e) demix traces of overlapping ROIs via NMF, "
+            "suite2p & mutualinfo do not. Options: "
+            "'cnmf' (CaImAn standard: low-rank background of CNMF), "
+            "'cnmf-e' (CaImAn for endoscopic data: ring model of CNMF-E ), "
+            "'suite2p' (fixed r=0.7), "
+            "'mutualinfo' (optimize r by minimizing mutual information)."
+        ),
+    )
+
+    # CNMF parameters
+    K: int = Field(
+        default=5,
+        description=(
+            "Maximum number of components to be found per patch when using greedy_roi "
+            "or corr_pnr initialization in CaImAn."
+        ),
+    )
+    nb: int = Field(
+        default=2,
+        description=(
+            "Number of background components if using CaImAn with neuropil=cnmf."
+        ),
+    )
+    rf: Optional[int] = Field(
+        default=40,
+        description=(
+            "Half-size of patches in pixels for CaImAn processing. If 0, the entire FOV "
+            "is processed as a single patch. Larger patches are more memory-intensive."
+        ),
+    )
+    stride: int = Field(
+        default=18,
+        description=(
+            "Overlap between neighboring patches in pixels for CaImAn processing. "
+            "Should be smaller than rf."
+        ),
+    )
+    tsub: int = Field(
+        default=2,
+        description=(
+            "Temporal downsampling factor during initialization phase in CaImAn. "
+            "Higher values speed up processing but may miss transients."
+        ),
+    )
+    ssub: int = Field(
+        default=2,
+        description=(
+            "Spatial downsampling factor during initialization phase in CaImAn. "
+            "Higher values speed up processing but may miss smaller cells."
+        ),
+    )
+    ssub_B: int = Field(
+        default=2,
+        description=(
+            "Additional spatial downsampling factor for background "
+            "during CNMF-E processing."
+        ),
+    )
+    merge_thr: float = Field(
+        default=0.8,
+        description=(
+            "Trace correlation threshold for merging components in CaImAn. "
+            "Components with correlation above this value will be merged."
+        ),
+    )
+
+    # CORR_PNR parameters
+    min_corr: float = Field(
+        default=0.6,
+        description=(
+            "Minimum local correlation for a component to be considered in corr_pnr "
+            "initialization. Higher values result in fewer, more reliable components."
+        ),
+    )
+    min_pnr: float = Field(
+        default=4,
+        description=(
+            "Minimum peak-to-noise ratio for a component to be considered in corr_pnr "
+            "initialization. Higher values result in fewer, more reliable components."
+        ),
+    )
+
+    # Component evaluation parameters
+    snr_thr: float = Field(
+        default=1.5,
+        description=(
+            "Signal-to-noise ratio threshold for component acceptance in CaImAn "
+            "evaluation. Components below this value will be rejected."
+        ),
+    )
+    rval_thr: float = Field(
+        default=0.6,
+        description=(
+            "Spatial correlation threshold for component acceptance in CaImAn "
+            "evaluation. Components below this value will be rejected."
+        ),
+    )
+    cnn_thr: float = Field(
+        default=0.9,
+        description=(
+            "CNN classifier threshold for component acceptance in CaImAn evaluation. "
+            "Components below this value will be rejected. Set to 0 to disable "
+            "CNN-based classification."
+        ),
+    )
+
+    # Output options
+    contour_video: bool = Field(
+        default=False,
+        description=(
+            "If True, creates a video overlaying raw data, ROI activity, and residual "
+            "with contours for visualization and quality assessment."
+        ),
+    )
+
+    verbose: bool = Field(
+        default=False, description="Enable verbose logging and debug information."
+    )
+
+    # Config for pydantic-settings
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="EXTRACTION_", case_sensitive=False, extra="ignore"
+    )
+
+    @field_validator("init", "neuropil")
+    @classmethod
+    def lowercase_str_fields(cls, v: str) -> str:
+        """Convert string fields to lowercase"""
+        return v.lower()
+
+    @field_validator("rf")
+    @classmethod
+    def validate_rf(cls, v: int) -> Optional[int]:
+        if v == 0:
+            return None
+        return v
+
+    def validate_consistency(self) -> Optional[str]:
+        """Validate command line arguments for consistency"""
+        if self.neuropil == "cnmf" and self.init == "corr_pnr":
+            # We'll log a warning but still update the parameters
+            self.ssub = 1
+            return (
+                "'corr_pnr' initialization with neuropil model 'cnmf' does "
+                "not support spatial downsampling. Setting ssub to 1"
+            )
+
+        if self.neuropil == "cnmf-e" and self.init == "greedy_roi":
+            raise ValueError(
+                "Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization"
+            )
+
+        if self.init in ("greedy_roi", "corr_pnr") and self.neuropil[:4] != "cnmf":
+            raise ValueError(
+                "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
+            )
+
+        # For backward compatibility
+        if self.init in ("1", "2", "3", "4"):
+            self.init = ("max/mean", "mean", "enhanced_mean", "max")[int(self.init) - 1]
+
+        return None  # No warning message
+
+
 # Core Utility Functions
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments
+def load_settings() -> ExtractionSettings:
+    """Load settings from environment variables, .env file, and command line arguments
 
     Returns
     -------
-    argparse.Namespace
-        Parsed arguments
+    ExtractionSettings
+        Parsed and validated settings with all defaults applied
+
+    Raises
+    ------
+    ValueError
+        If there are incompatible combinations of settings
+
+    Notes
+    -----
+    This also validates the consistency of settings, logging any warnings
+    about parameter adjustments that were made automatically.
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i", "--input-dir", type=str, help="Input directory", default="../data/"
-    )
-    parser.add_argument(
-        "-o", "--output-dir", type=str, help="Output directory", default="../results/"
-    )
-    parser.add_argument(
-        "--tmp_dir",
-        type=str,
-        default="/scratch",
-        help="Directory into which to write temporary files "
-        "produced by Suite2P (default: /scratch)",
-    )
-    parser.add_argument(
-        "--diameter",
-        type=int,
-        default=0,
-        help="Diameter that will be used for cellpose. "
-        "If set to zero, diameter is estimated.",
-    )
-    parser.add_argument(
-        "--init",
-        type=str,
-        default="mean",
-        help="Initialization. Will find masks using "
-        "max/mean: Cellpose on max projection image divided by mean image "
-        "mean: Cellpose on mean image "
-        "enhanced_mean: Cellpose on enhanced mean image "
-        "max: Cellpose on maximum projection image "
-        "sourcery: Suite2p's functional mode without 'sparse_mode' "
-        "sparsery: Suite2p's functional mode with 'sparse_mode' "
-        "greedy_roi: CaImAn's functional 'greedy_roi' mode "
-        "corr_pnr: CaImAn's functional 'corr_pnr' mode ",
-    )
-    parser.add_argument(
-        "--denoise",
-        action="store_true",
-        help="Whether or not binned movie should be denoised before cell detection.",
-    )
-    parser.add_argument(
-        "--cellprob_threshold",
-        type=float,
-        default=0.0,
-        help="Threshold for cell detection that will be used by cellpose.",
-    )
-    parser.add_argument(
-        "--flow_threshold",
-        type=float,
-        default=1.5,
-        help="Flow threshold that will be used by cellpose.",
-    )
-    parser.add_argument(
-        "--spatial_hp_cp",
-        type=int,
-        default=0,
-        help="Window for spatial high-pass filtering of image "
-        "to be used for cellpose.",
-    )
-    parser.add_argument(
-        "--pretrained_model",
-        type=str,
-        default="cyto",
-        help="Path to pretrained model or string for model type "
-        "(can be user's model).",
-    )
-    parser.add_argument(
-        "--neuropil",
-        type=str,
-        default="mutualinfo",
-        help="How to model the neuropil background, and whether to perform demixing. "
-        "cnmf(-e) demix traces of overlapping ROIs via NMF, suite2p & mutualinfo do not. "
-        "cnmf: low-rank background of CNMF "
-        "cnmf-e: ring model of CNMF-E "
-        "suite2p: neuropil masks and fix weight provided by suite2p "
-        "mutualinfo: neuropil masks from suite2p, but weights based on mutual information ",
-    )
-    parser.add_argument(
-        "--K",
-        type=int,
-        default=5,
-        help="Number of components to be found "
-        "(per patch or whole FOV depending on whether 'rf=0').",
-    )
-    parser.add_argument(
-        "--nb",
-        type=int,
-        default=2,
-        help="Number of background components if 'neuropil=cnmf').",
-    )
-    parser.add_argument(
-        "--rf",
-        type=int,
-        default=40,
-        help="Half-size of patch in pixels. If 0, no patches are "
-        "constructed and the whole FOV is processed jointly. If list, "
-        "it should be a list of two elements corresponding to the height "
-        "and width of patches.",
-    )
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=18,
-        help="Overlap between neighboring patches in pixels.",
-    )
-    parser.add_argument(
-        "--tsub",
-        type=int,
-        default=2,
-        help="Temporal downsampling factor during initialization "
-        "with 'greedy_roi' or 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--ssub",
-        type=int,
-        default=2,
-        help="Spatial downsampling factor during initialization "
-        "with 'greedy_roi' or 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--ssub_B",
-        type=int,
-        default=2,
-        help="Additional spatial downsampling factor for background during CNMF-E.",
-    )
-    parser.add_argument(
-        "--merge_thr",
-        type=float,
-        default=0.8,
-        help="Trace correlation threshold for merging two components.",
-    )
-    parser.add_argument(
-        "--min_corr",
-        type=float,
-        default=0.6,
-        help="Minimum value of correlation image for determining a "
-        "candidate component during 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--min_pnr",
-        type=float,
-        default=4,
-        help="Minimum value of psnr image for determining a candidate "
-        "component during 'corr_pnr'.",
-    )
-    parser.add_argument(
-        "--snr_thr",
-        type=float,
-        default=1.5,
-        help="Trace SNR threshold for component evaluation. "
-        "Traces with SNR above this will get accepted.",
-    )
-    parser.add_argument(
-        "--rval_thr",
-        type=float,
-        default=0.6,
-        help="Spatial correlation threshold for component evaluation. "
-        "Components with correlation higher than this will get accepted.",
-    )
-    parser.add_argument(
-        "--cnn_thr",
-        type=float,
-        default=0.9,
-        help="CNN classifier threshold for component evaluation. "
-        "Components with score higher than this will get accepted. "
-        "If set to 0 the CNN classifier won't be used.",
-    )
-    parser.add_argument(
-        "--contour_video",
-        action="store_true",
-        help="Create a video overlaying the raw data, ROI activity, "
-        "and remainder with ROI contours.",
-    )
-
-    args = parser.parse_args()
-
-    """Validate command line arguments for consistency"""
-    args.init = args.init.lower()
-    args.neuropil = args.neuropil.lower()
-    if args.neuropil == "cnmf" and args.init == "corr_pnr":
-        logger.info(
-            "'corr_pnr' initialization with neuropil model 'cnmf' does not "
-            "support spatial downsampling. Setting ssub to 1"
+    # First create a parser with same arguments as our settings model
+    parser = argparse.ArgumentParser(description="Source extraction pipeline")
+    # Add all arguments from ExtractionSettings
+    for field_name, field in ExtractionSettings.model_fields.items():
+        if field.description:
+            help_text = field.description
+        else:
+            help_text = f"{field_name} parameter"
+        parser.add_argument(
+            f"--{field_name}",
+            type=type(field.default) if field.default is not None else str,
+            default=None,  # Don't set defaults in argparse, let pydantic handle it
+            help=help_text,
         )
-        args.ssub = 1
-    if args.neuropil == "cnmf-e" and args.init == "greedy_roi":
-        raise NotImplementedError(
-            "Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization"
-        )
-    if args.init in ("greedy_roi", "corr_pnr"):
-        if args.neuropil[:4] != "cnmf":
-            raise NotImplementedError(
-                "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
-            )
-    if args.init in ("1", "2", "3", "4"):  # for backward compatibility
-        args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
-    if args.rf == 0:
-        args.rf = None
-    return args
+    # Parse the command line arguments
+    cmd_args = parser.parse_args()
+    # Convert to dictionary, removing None values (ones not specified on command line)
+    cmd_dict = {k: v for k, v in vars(cmd_args).items() if v is not None}
+    # Create settings object with values from command line having priority
+    settings = ExtractionSettings(**cmd_dict)
+    # Validate consistency and log any warnings
+    warning = settings.validate_consistency()
+    if warning:
+        logging.warning(warning)
+    return settings
 
 
 def get_metadata(input_dir: Path) -> Tuple[dict, dict, dict]:
@@ -433,7 +514,7 @@ def create_virtual_dataset(
         layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
         start = 0
         for loc in frame_locations:
-            layout[start : start + loc[1] - loc[0] + 1] = vsource[loc[0] : loc[1] + 1]
+            layout[start: start + loc[1] - loc[0] + 1] = vsource[loc[0]: loc[1] + 1]
             start += loc[1] - loc[0] + 1
         h5_file = temp_dir / h5_file.name
         with h5py.File(h5_file, "w") as f:
@@ -635,7 +716,7 @@ def get_contours(
         pars = dict()
         # we compute the cumulative sum of the energy of the Ath
         # component that has been ordered from least to highest
-        patch_data = A.data[A.indptr[i] : A.indptr[i + 1]]
+        patch_data = A.data[A.indptr[i]: A.indptr[i + 1]]
         indx = np.argsort(patch_data)[::-1]
         if thr_method == "nrg":
             cumEn = np.cumsum(patch_data[indx] ** 2)
@@ -652,12 +733,12 @@ def get_contours(
                 cumEn /= cumEn[-1]
                 Bvec = np.ones(d)
                 # we put it in a similar matrix
-                Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]][indx]] = cumEn
+                Bvec[A.indices[A.indptr[i]: A.indptr[i + 1]][indx]] = cumEn
         else:
             if thr_method != "max":
                 logging.warning("Unknown threshold method. Choosing max")
             Bvec = np.zeros(d)
-            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
+            Bvec[A.indices[A.indptr[i]: A.indptr[i + 1]]] = (
                 patch_data / patch_data.max()
             )
 
@@ -918,7 +999,7 @@ def run_caiman_extraction(
     # Determine if using CNMF-E
     cnmfe = args.neuropil == "cnmf-e"
     # Create mmap file
-    fname_new = create_mmap_file(input_fn, unique_id, args.tmp_dir)
+    fname_new = create_mmap_file(input_fn, unique_id, str(args.tmp_dir))
     # Load the file
     Yr, dims, T = caiman.load_memmap(fname_new)
     movie = np.reshape(Yr.T, [T] + list(dims), order="F")
@@ -1100,7 +1181,7 @@ def contour_video(
     lower_quantile: float = 0.02,
     upper_quantile: float = 0.9975,
     only_raw: bool = False,
-    n_jobs: int = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp),
+    n_jobs: Optional[int] = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp),
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
@@ -1196,12 +1277,10 @@ def contour_video(
         int(np.ceil(h * 1.08 / 16)) * 16,
         int(np.ceil((w if only_raw else 3 * w) / 16)) * 16,
     )
-    # textpad = canvas_size[1] - 3 * w  # left padding for vertical text
     pad = (canvas_size[1] - 3 * w) // 2
     canvas = np.zeros(canvas_size + (3,), np.uint8)
     for i in range(1 if only_raw else 3):
-        # text = ("Original", "Reconstructed", "Residual")[i]
-        text = ("Original", "ROI Activity", "Remainder")[i]
+        text = ("Original", "ROI Activity", "Residual")[i]
         fontscale = min(h / 600, w / 190)
         textsize = cv2.getTextSize(text, font, fontscale, max(h // 200, 1))[0]
         cv2.putText(
@@ -1243,33 +1322,33 @@ def contour_video(
             frame = cv2.resize(frame, (0, 0), fx=magnify, fy=magnify)
         frame = np.repeat(frame[..., None], 3, 2)
         frame[is_contours] = img_contours[is_contours]
-        canvas[-h:, -(w if only_raw else 3 * w) :] = frame
+        canvas[-h:, -(w if only_raw else 3 * w):] = frame
         writer.send(canvas)
     writer.close()
 
 
 if __name__ == "__main__":
     start_time = dt.now()
+    # Parse command-line arguments
+    args = load_settings()
+
     # Set the log level and name the logger
     logger = logging.getLogger(
         "Source extraction using a combination of Cellpose, Suite2p, and CaImAn"
     )
-    logger.setLevel(logging.INFO)
-
-    # Parse command-line arguments
-    args = parse_args()
+    logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
     # set env variables for CaImAn
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-    os.environ["CAIMAN_TEMP"] = args.tmp_dir
+    os.environ["CAIMAN_TEMP"] = str(args.tmp_dir)
 
-    output_dir = Path(args.output_dir).resolve()
-    input_dir = Path(args.input_dir).resolve()
+    output_dir = args.output_dir.resolve()
+    input_dir = args.input_dir.resolve()
     if next(input_dir.glob("output"), ""):
         sys.exit()
-    tmp_dir = Path(args.tmp_dir).resolve()
+    tmp_dir = args.tmp_dir.resolve()
     try:
         session, data_description, subject = get_metadata(input_dir)
     except StopIteration:
@@ -1341,7 +1420,7 @@ if __name__ == "__main__":
         suite2p_args["spatial_hp_cp"] = args.spatial_hp_cp
         suite2p_args["pretrained_model"] = args.pretrained_model
         suite2p_args["denoise"] = args.denoise
-        suite2p_args["save_path0"] = args.tmp_dir
+        suite2p_args["save_path0"] = str(tmp_dir)
         # Here we overwrite the parameters for suite2p that will not change in our
         # processing pipeline. These are parameters that are not exposed to
         # minimize code length. Those are not set to default.
@@ -1383,8 +1462,8 @@ if __name__ == "__main__":
         # load in the rois from the stat file and movie path for shape
         with h5py.File(str(motion_corrected_fn), "r") as open_vid:
             dims = open_vid["data"][0].shape
-        if len(list(Path(args.tmp_dir).rglob("stat.npy"))):
-            suite2p_stat_path = str(next(Path(args.tmp_dir).rglob("stat.npy")))
+        if len(list(tmp_dir.rglob("stat.npy"))):
+            suite2p_stat_path = str(next(tmp_dir.rglob("stat.npy")))
             suite2p_stats = np.load(suite2p_stat_path, allow_pickle=True)
             if args.neuropil in ("mutualinfo", "suite2p"):
                 # Run Suite2p to extract traces
@@ -1397,11 +1476,11 @@ if __name__ == "__main__":
                         )
                     )
                 else:  # all frames have already been used for detection as well as extraction
-                    suite2p_f_path = str(next(Path(args.tmp_dir).rglob("F.npy")))
-                    suite2p_fneu_path = str(next(Path(args.tmp_dir).rglob("Fneu.npy")))
+                    suite2p_f_path = str(next(tmp_dir.rglob("F.npy")))
+                    suite2p_fneu_path = str(next(tmp_dir.rglob("Fneu.npy")))
                     traces_roi = np.load(suite2p_f_path, allow_pickle=True)
                     traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
-                iscell = np.load(str(next(Path(args.tmp_dir).rglob("iscell.npy"))))
+                iscell = np.load(str(next(tmp_dir.rglob("iscell.npy"))))
                 if args.neuropil == "suite2p":
                     traces_corrected = (
                         traces_roi - suite2p_args["neucoeff"] * traces_neuropil
@@ -1456,7 +1535,7 @@ if __name__ == "__main__":
                         for roi in suite2p_stats
                     ]
                 )
-                ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy"), ""))
+                ops_path = str(next(tmp_dir.rglob("ops.npy"), ""))
                 ops = np.load(ops_path, allow_pickle=True)[()]
                 traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
                     run_caiman_extraction(
@@ -1475,8 +1554,8 @@ if __name__ == "__main__":
             keys = []
 
     # write output files
-    cellpose_path = str(next(Path(args.tmp_dir).rglob("cellpose.npz"), ""))
-    ops_path = str(next(Path(args.tmp_dir).rglob("ops.npy"), ""))
+    cellpose_path = str(next(tmp_dir.rglob("cellpose.npz"), ""))
+    ops_path = str(next(tmp_dir.rglob("ops.npy"), ""))
     with h5py.File(output_dir / f"{unique_id}_extraction.h5", "w") as f:
         # traces
         f.create_dataset("traces/corrected", data=traces_corrected, compression="gzip")
@@ -1501,7 +1580,7 @@ if __name__ == "__main__":
         f.create_dataset("rois/data", data=data, compression="gzip")
         shape = np.array([len(traces_roi), *dims], dtype=np.int16)
         f.create_dataset("rois/shape", data=shape)  # neurons x height x width
-        if neuropil_coords is not []:
+        if len(neuropil_coords) > 0:
             f.create_dataset(
                 "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
             )
