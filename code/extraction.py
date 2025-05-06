@@ -390,10 +390,8 @@ def make_output_directory(output_dir: Path, experiment_id: str) -> str:
     output_dir: str
         output directory
     """
-    output_dir = output_dir / experiment_id
-    output_dir.mkdir(exist_ok=True)
-    output_dir = output_dir / "extraction"
-    output_dir.mkdir(exist_ok=True)
+    output_dir = output_dir / experiment_id / "extraction"
+    output_dir.mkdir(exist_ok=True, parents=True)
     return output_dir
 
 
