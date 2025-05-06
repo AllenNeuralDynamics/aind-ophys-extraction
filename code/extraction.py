@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 import os
@@ -749,7 +748,7 @@ def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> flo
         logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
         return Cellpose().sz.eval(img)[0] / fac
     else:
-        return args.diameter / fac
+        return diameter / fac
 
 
 # Trace Processing Functions
@@ -837,7 +836,7 @@ def get_FC_from_r(
 
 # CaImAn Functions
 def build_CNMFParams(
-    args: argparse.Namespace,
+    args: ExtractionSettings,
     ops: dict,
     cnmfe: bool,
     Ain: Optional[np.ndarray] = None,
@@ -847,7 +846,7 @@ def build_CNMFParams(
 
     Parameters
     ----------
-    args : argparse.Namespace
+    args : ExtractionSettings
         Command line arguments
     ops : dict
         Dictionary with summary images and other data
@@ -924,7 +923,7 @@ def build_CNMFParams(
 def run_caiman_extraction(
     input_fn: Union[str, Path],
     unique_id: str,
-    args: argparse.Namespace,
+    args: ExtractionSettings,
     ops: dict,
     Ain: Optional[np.ndarray] = None,
     n_jobs: Optional[int] = None,
@@ -937,7 +936,7 @@ def run_caiman_extraction(
         Path to the input HDF5 file containing the source dataset.
     unique_id : str
         Unique identifier for the session.
-    args : argparse.Namespace
+    args : ExtractionSettings
         Command line arguments.
     ops : dict
         Dictionary with summary images and other data.
