@@ -745,10 +745,11 @@ def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> flo
         Estimated Gaussian sigma.
     """
     if diameter == 0:
-        logger.info("'diameter' set to 0 — automatically estimating it with Cellpose.")
-        return Cellpose().sz.eval(img)[0] / fac
-    else:
-        return diameter / fac
+        diameter = Cellpose().sz.eval(img)[0]
+        logger.info(f"'diameter' set to 0 — automatically estimated with Cellpose as {diameter:.3f}.")
+    gSig = diameter / fac
+    logger.info(f"Setting gSig to {gSig:.3f}.")
+    return gSig
 
 
 # Trace Processing Functions
@@ -1353,13 +1354,14 @@ if __name__ == "__main__":
         # Overwrite the parameters for suite2p that are exposed
         suite2p_args["diameter"] = args.diameter
         if args.diameter == 0 and args.init == "sourcery":
-            logger.info(
-                "'diameter' set to 0 — automatically estimating it with Cellpose."
-            )
             with h5py.File(str(motion_corrected_fn), "r") as open_vid:
                 suite2p_args["diameter"] = round(
                     Cellpose().sz.eval(mean_image(open_vid["data"]))[0]
                 )
+            logger.info(
+                "'diameter' set to 0 — automatically estimated with Cellpose "
+                f"as {suite2p_args['diameter']:.0f}."
+            )
         suite2p_args["anatomical_only"] = {
             "max/mean": 1,
             "mean": 2,
