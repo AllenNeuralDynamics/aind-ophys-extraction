@@ -78,15 +78,15 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     cellprob_threshold: float = Field(
         default=0.0,
         description=(
-            "Probability threshold for CellPose cell detection. Increase for fewer "
-            "false positives, decrease for higher sensitivity."
+            "Probability threshold for CellPose cell detection. "
+            "Decrease this threshold if CellPose is not returning enough ROIs."
         ),
     )
     flow_threshold: float = Field(
         default=1.5,
         description=(
-            "Flow threshold used by CellPose during cell detection. Higher values "
-            "result in fewer cells."
+            "Flow threshold used by CellPose during cell detection. "
+            "Increase this threshold if CellPose is not returning enough ROIs."
         ),
     )
     spatial_hp_cp: int = Field(
