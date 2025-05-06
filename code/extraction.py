@@ -30,7 +30,7 @@ from pydantic import Field, field_validator
 from scipy.sparse import coo_matrix, hstack, linalg
 
 
-class ExtractionSettings(BaseSettings):
+class ExtractionSettings(BaseSettings, cli_parse_args=True):
     """Settings for extraction pipeline using pydantic-settings."""
 
     # Basic parameters
@@ -272,51 +272,11 @@ class ExtractionSettings(BaseSettings):
 
         return None  # No warning message
 
-
-# Core Utility Functions
-def load_settings() -> ExtractionSettings:
-    """Load settings from environment variables, .env file, and command line arguments
-
-    Returns
-    -------
-    ExtractionSettings
-        Parsed and validated settings with all defaults applied
-
-    Raises
-    ------
-    ValueError
-        If there are incompatible combinations of settings
-
-    Notes
-    -----
-    This also validates the consistency of settings, logging any warnings
-    about parameter adjustments that were made automatically.
-    """
-    # First create a parser with same arguments as our settings model
-    parser = argparse.ArgumentParser(description="Source extraction pipeline")
-    # Add all arguments from ExtractionSettings
-    for field_name, field in ExtractionSettings.model_fields.items():
-        if field.description:
-            help_text = field.description
-        else:
-            help_text = f"{field_name} parameter"
-        parser.add_argument(
-            f"--{field_name}",
-            type=type(field.default) if field.default is not None else str,
-            default=None,  # Don't set defaults in argparse, let pydantic handle it
-            help=help_text,
-        )
-    # Parse the command line arguments
-    cmd_args = parser.parse_args()
-    # Convert to dictionary, removing None values (ones not specified on command line)
-    cmd_dict = {k: v for k, v in vars(cmd_args).items() if v is not None}
-    # Create settings object with values from command line having priority
-    settings = ExtractionSettings(**cmd_dict)
-    # Validate consistency and log any warnings
-    warning = settings.validate_consistency()
-    if warning:
-        logging.warning(warning)
-    return settings
+    def model_post_init(self, _) -> None:
+        """Run validation after model initialization"""
+        warning = self.validate_consistency()
+        if warning:
+            logging.warning(warning)
 
 
 def get_metadata(input_dir: Path) -> Tuple[dict, dict, dict]:
@@ -1328,7 +1288,7 @@ def contour_video(
 if __name__ == "__main__":
     start_time = dt.now()
     # Parse command-line arguments
-    args = load_settings()
+    args = ExtractionSettings()
 
     # Set the log level and name the logger
     logger = logging.getLogger(
