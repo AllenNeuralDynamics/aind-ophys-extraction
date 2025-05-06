@@ -6,7 +6,7 @@ import sys
 from datetime import datetime as dt
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import caiman
 import cv2
@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5,
         help="Number of components to be found "
-        "(per patch or whole FOV depending on whether 'rf=None').",
+        "(per patch or whole FOV depending on whether 'rf=0').",
     )
     parser.add_argument(
         "--nb",
@@ -131,7 +131,7 @@ def parse_args() -> argparse.Namespace:
         "--rf",
         type=int,
         default=40,
-        help="Half-size of patch in pixels. If None, no patches are "
+        help="Half-size of patch in pixels. If 0, no patches are "
         "constructed and the whole FOV is processed jointly. If list, "
         "it should be a list of two elements corresponding to the height "
         "and width of patches.",
@@ -233,6 +233,8 @@ def parse_args() -> argparse.Namespace:
             )
     if args.init in ("1", "2", "3", "4"):  # for backward compatibility
         args.init = ("max/mean", "mean", "enhanced_mean", "max")[int(args.init) - 1]
+    if args.rf == 0:
+        args.rf = None
     return args
 
 
@@ -440,7 +442,7 @@ def create_virtual_dataset(
     return h5_file
 
 
-def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> str:
+def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> Path:
     """Creates a virtual dataset for Bergamo segmentation by filtering out photostimulation frames
 
     Parameters
@@ -453,7 +455,7 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
         temporary directory for virtual dataset
     Returns
     -------
-    h5_file: str
+    h5_file: Path
         path to motion corrected h5 file
     """
     motion_dir = motion_corr_fp.parent
@@ -575,7 +577,7 @@ def create_mmap_file(
 
 
 # ROI Analysis Functions
-def com(rois):
+def com(rois: Union[np.ndarray, sparse.COO]) -> np.ndarray:
     """Calculation of the center of mass for spatial components
 
     Parameters
@@ -596,7 +598,9 @@ def com(rois):
     return (A / A.sum(axis=1)).dot(Coor.T)
 
 
-def get_contours(rois, thr=0.2, thr_method="max"):
+def get_contours(
+    rois: Union[np.ndarray, sparse.COO], thr: float = 0.2, thr_method: str = "max"
+) -> list[dict]:
     """Gets contour of spatial components and returns their coordinates
 
     Parameters
@@ -793,7 +797,13 @@ def get_FC_from_r(
 
 
 # CaImAn Functions
-def build_CNMFParams(args, ops, cnmfe, Ain=None, dims=None):
+def build_CNMFParams(
+    args: argparse.Namespace,
+    ops: dict,
+    cnmfe: bool,
+    Ain: Optional[np.ndarray] = None,
+    dims: Optional[tuple] = None,
+) -> params.CNMFParams:
     """Build parameter dictionary for CaImAn extraction.
 
     Parameters
@@ -811,7 +821,7 @@ def build_CNMFParams(args, ops, cnmfe, Ain=None, dims=None):
 
     Returns
     -------
-    dict
+    params.CNMFParams
         Parameter dictionary for CaImAn
     """
     # Estimate Gaussian sigma based on cell diameter
@@ -872,7 +882,14 @@ def build_CNMFParams(args, ops, cnmfe, Ain=None, dims=None):
     return params.CNMFParams(params_dict=params_dict)
 
 
-def run_caiman_extraction(input_fn, unique_id, args, ops, Ain=None, n_jobs=None):
+def run_caiman_extraction(
+    input_fn: Union[str, Path],
+    unique_id: str,
+    args: argparse.Namespace,
+    ops: dict,
+    Ain: Optional[np.ndarray] = None,
+    n_jobs: Optional[int] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Run CaImAn to extract neural activity traces.
 
     Parameters
@@ -930,7 +947,9 @@ def run_caiman_extraction(input_fn, unique_id, args, ops, Ain=None, n_jobs=None)
     return format_caiman_output(cnm.estimates, cnmfe, Yr)
 
 
-def format_caiman_output(e, cnmfe, Yr):
+def format_caiman_output(
+    e: caiman.source_extraction.cnmf.estimates.Estimates, cnmfe: bool, Yr: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Format the output from CaImAn's CNMF for standardized extraction results.
 
     Parameters
@@ -1010,7 +1029,14 @@ def format_caiman_output(e, cnmfe, Yr):
 
 
 # Visualization Functions
-def save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img):
+def save_summary_images_with_rois(
+    output_dir: Path,
+    unique_id: str,
+    rois: sparse.COO,
+    iscell: np.ndarray,
+    ops: dict,
+    corr_img: np.ndarray,
+) -> None:
     """Save summary images with ROI contours
 
     Parameters
@@ -1078,7 +1104,7 @@ def contour_video(
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
-):
+) -> None:
     """Create a video contours using vp9 codec via imageio-ffmpeg
 
     Parameters
