@@ -1,9 +1,10 @@
 metadata_version: 1
-name: aind-ophys-extraction-suite2p
-description: Combines cellpose and suite2p to extract sources, i.e. ROIs and their
-  traces.
+name: aind-ophys-extraction
+description: This capsule uses a mix-and-match approach to combine Cellpose, Suite2p,
+  and CaImAn for cell detection and signal extraction.
 authors:
 - name: AIND
 - name: Arielle Leon
 - name: Jerome Lecoq
+- name: Jinho Kim
 - name: Johannes Friedrich
