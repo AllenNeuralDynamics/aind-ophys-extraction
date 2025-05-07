@@ -1323,7 +1323,6 @@ if __name__ == "__main__":
         motion_corrected_fn = bergamo_segmentation(input_fn, session, temp_dir=tmp_dir)
     else:
         motion_corrected_fn = input_fn
-
     frame_rate = get_frame_rate(session)
     output_dir = make_output_directory(output_dir, unique_id)
 
