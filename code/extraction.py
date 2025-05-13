@@ -1368,6 +1368,7 @@ if __name__ == "__main__":
             "max": 4,
         }.get(args.init, 0)
         suite2p_args["cellprob_threshold"] = args.cellprob_threshold
+        suite2p_args["threshold_scaling"] = 1.2
         suite2p_args["flow_threshold"] = args.flow_threshold
         suite2p_args["spatial_hp_cp"] = args.spatial_hp_cp
         suite2p_args["pretrained_model"] = args.pretrained_model
