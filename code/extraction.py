@@ -1552,8 +1552,9 @@ if __name__ == "__main__":
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
+    input_args = {**vars(args), **suite2p_args}
     write_data_process(
-        vars(args),
+        input_args,
         input_fn,
         output_dir / f"{unique_id}_extraction.h5",
         unique_id,
