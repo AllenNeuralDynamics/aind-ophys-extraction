@@ -20,12 +20,13 @@ from aind_data_schema.core.processing import DataProcess, ProcessName
 from aind_data_schema.core.quality_control import QCMetric, QCStatus, Status
 from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
-from aind_ophys_utils.summary_images import max_corr_image, max_image, mean_image
+from aind_ophys_utils.summary_images import (max_corr_image, max_image,
+                                             mean_image)
 from aind_qcportal_schema.metric_value import CheckboxMetric
 from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from scipy.sparse import coo_matrix, hstack, linalg
 
 
@@ -471,7 +472,7 @@ def create_virtual_dataset(
         layout = h5py.VirtualLayout(shape=(frames_length, *data_shape[1:]), dtype=dtype)
         start = 0
         for loc in frame_locations:
-            layout[start: start + loc[1] - loc[0] + 1] = vsource[loc[0]: loc[1] + 1]
+            layout[start : start + loc[1] - loc[0] + 1] = vsource[loc[0] : loc[1] + 1]
             start += loc[1] - loc[0] + 1
         h5_file = temp_dir / h5_file.name
         with h5py.File(h5_file, "w") as f:
@@ -673,7 +674,7 @@ def get_contours(
         pars = dict()
         # we compute the cumulative sum of the energy of the Ath
         # component that has been ordered from least to highest
-        patch_data = A.data[A.indptr[i]: A.indptr[i + 1]]
+        patch_data = A.data[A.indptr[i] : A.indptr[i + 1]]
         indx = np.argsort(patch_data)[::-1]
         if thr_method == "nrg":
             cumEn = np.cumsum(patch_data[indx] ** 2)
@@ -690,12 +691,12 @@ def get_contours(
                 cumEn /= cumEn[-1]
                 Bvec = np.ones(d)
                 # we put it in a similar matrix
-                Bvec[A.indices[A.indptr[i]: A.indptr[i + 1]][indx]] = cumEn
+                Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]][indx]] = cumEn
         else:
             if thr_method != "max":
                 logging.warning("Unknown threshold method. Choosing max")
             Bvec = np.zeros(d)
-            Bvec[A.indices[A.indptr[i]: A.indptr[i + 1]]] = (
+            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
                 patch_data / patch_data.max()
             )
 
@@ -746,7 +747,9 @@ def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> flo
     """
     if diameter == 0:
         diameter = Cellpose().sz.eval(img)[0]
-        logger.info(f"'diameter' set to 0 — automatically estimated with Cellpose as {diameter:.3f}.")
+        logger.info(
+            f"'diameter' set to 0 — automatically estimated with Cellpose as {diameter:.3f}."
+        )
     gSig = diameter / fac
     logger.info(f"Setting gSig to {gSig:.3f}.")
     return gSig
@@ -1139,7 +1142,9 @@ def contour_video(
     lower_quantile: float = 0.02,
     upper_quantile: float = 0.9975,
     only_raw: bool = False,
-    n_jobs: Optional[int] = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp),
+    n_jobs: Optional[int] = None
+    if (tmp := os.environ.get("CO_CPUS")) is None
+    else int(tmp),
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
@@ -1280,7 +1285,7 @@ def contour_video(
             frame = cv2.resize(frame, (0, 0), fx=magnify, fy=magnify)
         frame = np.repeat(frame[..., None], 3, 2)
         frame[is_contours] = img_contours[is_contours]
-        canvas[-h:, -(w if only_raw else 3 * w):] = frame
+        canvas[-h:, -(w if only_raw else 3 * w) :] = frame
         writer.send(canvas)
     writer.close()
 
@@ -1337,15 +1342,19 @@ if __name__ == "__main__":
                 "meanImg": mean_image(open_vid["data"]),
                 "max_proj": max_image(open_vid["data"]),
             }
-        traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
-            run_caiman_extraction(
-                input_fn, unique_id, args, ops, Ain=None, n_jobs=n_jobs
-            )
+        (
+            traces_corrected,
+            traces_neuropil,
+            traces_roi,
+            data,
+            coords,
+            iscell,
+        ) = run_caiman_extraction(
+            input_fn, unique_id, args, ops, Ain=None, n_jobs=n_jobs
         )
         neuropil_coords, keys = [], []
 
     else:
-
         # Run Cellpose via Suite2p to get ROI seeds
         # =========================================
         # Set suite2p args.
@@ -1422,10 +1431,14 @@ if __name__ == "__main__":
                 # =============================
                 if session is not None and "Bergamo" in session["rig_id"]:
                     # extract signals for all frames, not just those used for cell detection
-                    stat, traces_roi, traces_neuropil, _, _ = (
-                        suite2p.extraction.extraction_wrapper(
-                            suite2p_stats, h5py.File(input_fn)["data"], ops=suite2p_args
-                        )
+                    (
+                        stat,
+                        traces_roi,
+                        traces_neuropil,
+                        _,
+                        _,
+                    ) = suite2p.extraction.extraction_wrapper(
+                        suite2p_stats, h5py.File(input_fn)["data"], ops=suite2p_args
                     )
                 else:  # all frames have already been used for detection as well as extraction
                     suite2p_f_path = str(next(tmp_dir.rglob("F.npy")))
@@ -1489,10 +1502,15 @@ if __name__ == "__main__":
                 )
                 ops_path = str(next(tmp_dir.rglob("ops.npy"), ""))
                 ops = np.load(ops_path, allow_pickle=True)[()]
-                traces_corrected, traces_neuropil, traces_roi, data, coords, iscell = (
-                    run_caiman_extraction(
-                        input_fn, unique_id, args, ops, Ain=Ain, n_jobs=n_jobs
-                    )
+                (
+                    traces_corrected,
+                    traces_neuropil,
+                    traces_roi,
+                    data,
+                    coords,
+                    iscell,
+                ) = run_caiman_extraction(
+                    input_fn, unique_id, args, ops, Ain=Ain, n_jobs=n_jobs
                 )
                 neuropil_coords, keys = [], []
 
