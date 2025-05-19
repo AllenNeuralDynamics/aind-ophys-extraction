@@ -1353,6 +1353,7 @@ if __name__ == "__main__":
             input_fn, unique_id, args, ops, Ain=None, n_jobs=n_jobs
         )
         neuropil_coords, keys = [], []
+        input_args = vars(args)
 
     else:
         # Run Cellpose via Suite2p to get ROI seeds
@@ -1417,6 +1418,7 @@ if __name__ == "__main__":
         logger.info(f"running Suite2P v{suite2p.version}")
         try:
             suite2p.run_s2p(suite2p_args)
+            input_args = {**vars(args), **suite2p_args}
         except IndexError:  # raised when no ROIs found
             pass
 
@@ -1570,7 +1572,7 @@ if __name__ == "__main__":
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
-    input_args = {**vars(args), **suite2p_args}
+    
     write_data_process(
         input_args,
         input_fn,
