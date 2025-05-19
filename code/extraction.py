@@ -1417,8 +1417,8 @@ if __name__ == "__main__":
 
         logger.info(f"running Suite2P v{suite2p.version}")
         try:
-            suite2p.run_s2p(suite2p_args)
             input_args = {**vars(args), **suite2p_args}
+            suite2p.run_s2p(suite2p_args)
         except IndexError:  # raised when no ROIs found
             pass
 
