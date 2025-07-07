@@ -22,7 +22,7 @@ from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import (max_corr_image, max_image,
                                              mean_image)
-from aind_qcportal_schema.metric_value import CheckboxMetric
+from aind_qcportal_schema.metric_value import CheckboxMetric, CurationMetric
 from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
 from pydantic import Field, field_validator
@@ -69,6 +69,62 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "corr_pnr: CaImAn's functional 'corr_pnr' mode."
         ),
     )
+    functional_chan: int = Field(
+        default=1,
+        description="this channel is used to extract functional ROIs (1-based)"
+    )
+    tau : int = Field(
+        default=1,
+        description="this is the main parameter for deconvolution"
+    )
+    smooth_sigma_time : int = Field(
+        default=0,
+        description="gaussian smoothing in time"
+    )
+    smooth_sigma : float = Field(
+        default=1.5,
+        description="~1 good for 2P recordings, recommend 3-5 for 1P recordings"
+    )
+    spatial_scale: int = Field(
+        default=0,
+        description="0: multi-scale; 1: 6 pixels, 2: 12 pixels, 3: 24 pixels, 4: 48 pixels"
+    )
+    nbinned : int = Field(
+        default=5000,
+        description="max number of binned frames for cell detection"
+    )
+    threshold_scaling : int = Field(
+        default=1,
+        description="adjust the automatically determined threshold by this scalar multiplier"
+    )
+    max_overlap : float = Field(
+        default=0.75,
+        description="cells with more overlap than this get removed during triage, before refinement"
+    )
+    soma_crop : bool = Field(
+        default=False,
+        description="crop dendrites for cell classification stats like compactness"
+    )
+    allow_overlap: bool = Field(
+        default=False,
+        description="pixels that are overlapping are thrown out (False) or added to both ROIs (True)"
+    )
+    baseline : str = Field(
+        default="maximin",
+        description="baselining mode (can also choose 'prctile;)"
+    )
+    win_baseline : int = Field(
+        default=60,
+        desctiopion="window for maximum"
+    )
+    sig_baseline : int = Field(
+        default=10,
+        description="smooth constant for gaussian filter"
+    )
+    prctile_baseline : int = Field(
+        default=8,
+        description="percentile for baseline estimation"
+    )   
     denoise: bool = Field(
         default=False,
         description=(
@@ -103,7 +159,6 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "'cyto2' (improved model), or path to a custom model file."
         ),
     )
-
     # Neuropil parameters
     neuropil: str = Field(
         default="mutualinfo",
@@ -117,7 +172,6 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "'mutualinfo' (optimize r by minimizing mutual information)."
         ),
     )
-
     # CNMF parameters
     K: int = Field(
         default=5,
@@ -1383,6 +1437,20 @@ if __name__ == "__main__":
         suite2p_args["pretrained_model"] = args.pretrained_model
         suite2p_args["denoise"] = args.denoise
         suite2p_args["save_path0"] = str(tmp_dir)
+        suite2p_args["function_channel"] = args.function_channel
+        suite2p_args["tau"] = args.tau
+        suite2p_args["smooth_sigma_time"] = args.smooth_sigma_time
+        suite2p_args["smooth_sigma"] = args.smooth_sigma
+        suite2p_args["spatial_scale"] = args.spatial_scale
+        suite2p_args["nbinned"] = args.nbinned
+        suite2p_args["threshold_scaling"] = args.threshold_scaling
+        suite2p_args["max_overlap"] = args.max_overlap
+        suite2p_args["soma_crop"] = args.soma_crop
+        suite2p_args["allow_overlap"] = args.allow_overlap
+        suite2p_args["baseline"] = args.baseline
+        suite2p_args["win_baseline"] = args.win_baseline
+        suite2p_args["sig_baseline"] = args.sig_baseline
+        suite2p_args["prctile_baseline"] = args.prctile_baseline
         # Here we overwrite the parameters for suite2p that will not change in our
         # processing pipeline. These are parameters that are not exposed to
         # minimize code length. Those are not set to default.
@@ -1394,7 +1462,6 @@ if __name__ == "__main__":
         suite2p_args["spikedetect"] = False
         suite2p_args["fs"] = frame_rate
         suite2p_args["neuropil_extract"] = True
-
         # determine nbinned from bin_duration and fs
         # The duration of time (in seconds) that
         suite2p_args["bin_duration"] = 3.7
