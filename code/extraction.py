@@ -71,60 +71,49 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     )
     functional_chan: int = Field(
         default=1,
-        description="this channel is used to extract functional ROIs (1-based)"
+        description="this channel is used to extract functional ROIs (1-based)",
     )
-    tau : int = Field(
-        default=1,
-        description="this is the main parameter for deconvolution"
+    tau: int = Field(
+        default=1, description="this is the main parameter for deconvolution"
     )
-    smooth_sigma_time : int = Field(
-        default=0,
-        description="gaussian smoothing in time"
-    )
-    smooth_sigma : float = Field(
+    smooth_sigma_time: int = Field(default=0, description="gaussian smoothing in time")
+    smooth_sigma: float = Field(
         default=1.5,
-        description="~1 good for 2P recordings, recommend 3-5 for 1P recordings"
+        description="~1 good for 2P recordings, recommend 3-5 for 1P recordings",
     )
     spatial_scale: int = Field(
         default=0,
-        description="0: multi-scale; 1: 6 pixels, 2: 12 pixels, 3: 24 pixels, 4: 48 pixels"
+        description="0: multi-scale; 1: 6 pixels, 2: 12 pixels, 3: 24 pixels, 4: 48 pixels",
     )
-    nbinned : int = Field(
-        default=5000,
-        description="max number of binned frames for cell detection"
+    nbinned: int = Field(
+        default=5000, description="max number of binned frames for cell detection"
     )
-    threshold_scaling : int = Field(
+    threshold_scaling: int = Field(
         default=1,
-        description="adjust the automatically determined threshold by this scalar multiplier"
+        description="adjust the automatically determined threshold by this scalar multiplier",
     )
-    max_overlap : float = Field(
+    max_overlap: float = Field(
         default=0.75,
-        description="cells with more overlap than this get removed during triage, before refinement"
+        description="cells with more overlap than this get removed during triage, before refinement",
     )
-    soma_crop : bool = Field(
+    soma_crop: bool = Field(
         default=False,
-        description="crop dendrites for cell classification stats like compactness"
+        description="crop dendrites for cell classification stats like compactness",
     )
     allow_overlap: bool = Field(
         default=False,
-        description="pixels that are overlapping are thrown out (False) or added to both ROIs (True)"
+        description="pixels that are overlapping are thrown out (False) or added to both ROIs (True)",
     )
-    baseline : str = Field(
-        default="maximin",
-        description="baselining mode (can also choose 'prctile;)"
+    baseline: str = Field(
+        default="maximin", description="baselining mode (can also choose 'prctile;)"
     )
-    win_baseline : int = Field(
-        default=60,
-        desctiopion="window for maximum"
+    win_baseline: int = Field(default=60, desctiopion="window for maximum")
+    sig_baseline: int = Field(
+        default=10, description="smooth constant for gaussian filter"
     )
-    sig_baseline : int = Field(
-        default=10,
-        description="smooth constant for gaussian filter"
+    prctile_baseline: int = Field(
+        default=8, description="percentile for baseline estimation"
     )
-    prctile_baseline : int = Field(
-        default=8,
-        description="percentile for baseline estimation"
-    )   
     denoise: bool = Field(
         default=False,
         description=(
@@ -1196,9 +1185,9 @@ def contour_video(
     lower_quantile: float = 0.02,
     upper_quantile: float = 0.9975,
     only_raw: bool = False,
-    n_jobs: Optional[int] = None
-    if (tmp := os.environ.get("CO_CPUS")) is None
-    else int(tmp),
+    n_jobs: Optional[int] = (
+        None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
+    ),
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
@@ -1639,7 +1628,6 @@ if __name__ == "__main__":
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
-    
     write_data_process(
         input_args,
         input_fn,
