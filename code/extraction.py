@@ -1426,7 +1426,7 @@ if __name__ == "__main__":
         suite2p_args["pretrained_model"] = args.pretrained_model
         suite2p_args["denoise"] = args.denoise
         suite2p_args["save_path0"] = str(tmp_dir)
-        suite2p_args["function_channel"] = args.function_channel
+        suite2p_args["functional_chan"] = args.functional_chan
         suite2p_args["tau"] = args.tau
         suite2p_args["smooth_sigma_time"] = args.smooth_sigma_time
         suite2p_args["smooth_sigma"] = args.smooth_sigma
