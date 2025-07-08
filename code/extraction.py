@@ -73,10 +73,6 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         default=1,
         description="this channel is used to extract functional ROIs (1-based)",
     )
-    spatial_scale: int = Field(
-        default=0,
-        description="0: multi-scale; 1: 6 pixels, 2: 12 pixels, 3: 24 pixels, 4: 48 pixels",
-    )
     threshold_scaling: int = Field(
         default=1,
         description="adjust the automatically determined threshold by this scalar multiplier",
@@ -1406,7 +1402,6 @@ if __name__ == "__main__":
         suite2p_args["denoise"] = args.denoise
         suite2p_args["save_path0"] = str(tmp_dir)
         suite2p_args["functional_chan"] = args.functional_chan
-        suite2p_args["spatial_scale"] = args.spatial_scale
         suite2p_args["threshold_scaling"] = args.threshold_scaling
         suite2p_args["max_overlap"] = args.max_overlap
         suite2p_args["soma_crop"] = args.soma_crop
