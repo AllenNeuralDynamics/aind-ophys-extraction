@@ -22,7 +22,7 @@ from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.summary_images import (max_corr_image, max_image,
                                              mean_image)
-from aind_qcportal_schema.metric_value import CheckboxMetric
+from aind_qcportal_schema.metric_value import CheckboxMetric, CurationMetric
 from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
 from pydantic import Field, field_validator
@@ -69,6 +69,26 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "corr_pnr: CaImAn's functional 'corr_pnr' mode."
         ),
     )
+    functional_chan: int = Field(
+        default=1,
+        description="this channel is used to extract functional ROIs (1-based)",
+    )
+    threshold_scaling: int = Field(
+        default=1,
+        description="adjust the automatically determined threshold by this scalar multiplier",
+    )
+    max_overlap: float = Field(
+        default=0.75,
+        description="cells with more overlap than this get removed during triage, before refinement",
+    )
+    soma_crop: bool = Field(
+        default=False,
+        description="crop dendrites for cell classification stats like compactness",
+    )
+    allow_overlap: bool = Field(
+        default=False,
+        description="pixels that are overlapping are thrown out (False) or added to both ROIs (True)",
+    )
     denoise: bool = Field(
         default=False,
         description=(
@@ -103,7 +123,6 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "'cyto2' (improved model), or path to a custom model file."
         ),
     )
-
     # Neuropil parameters
     neuropil: str = Field(
         default="mutualinfo",
@@ -117,7 +136,6 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "'mutualinfo' (optimize r by minimizing mutual information)."
         ),
     )
-
     # CNMF parameters
     K: int = Field(
         default=5,
@@ -1142,9 +1160,9 @@ def contour_video(
     lower_quantile: float = 0.02,
     upper_quantile: float = 0.9975,
     only_raw: bool = False,
-    n_jobs: Optional[int] = None
-    if (tmp := os.environ.get("CO_CPUS")) is None
-    else int(tmp),
+    n_jobs: Optional[int] = (
+        None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
+    ),
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
@@ -1383,6 +1401,11 @@ if __name__ == "__main__":
         suite2p_args["pretrained_model"] = args.pretrained_model
         suite2p_args["denoise"] = args.denoise
         suite2p_args["save_path0"] = str(tmp_dir)
+        suite2p_args["functional_chan"] = args.functional_chan
+        suite2p_args["threshold_scaling"] = args.threshold_scaling
+        suite2p_args["max_overlap"] = args.max_overlap
+        suite2p_args["soma_crop"] = args.soma_crop
+        suite2p_args["allow_overlap"] = args.allow_overlap
         # Here we overwrite the parameters for suite2p that will not change in our
         # processing pipeline. These are parameters that are not exposed to
         # minimize code length. Those are not set to default.
@@ -1394,7 +1417,6 @@ if __name__ == "__main__":
         suite2p_args["spikedetect"] = False
         suite2p_args["fs"] = frame_rate
         suite2p_args["neuropil_extract"] = True
-
         # determine nbinned from bin_duration and fs
         # The duration of time (in seconds) that
         suite2p_args["bin_duration"] = 3.7
@@ -1572,7 +1594,6 @@ if __name__ == "__main__":
         f.create_dataset("meanImg", data=ops["meanImg"], compression="gzip")
         f.create_dataset("maxImg", data=ops["max_proj"], compression="gzip")
 
-    
     write_data_process(
         input_args,
         input_fn,
