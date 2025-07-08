@@ -73,20 +73,9 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         default=1,
         description="this channel is used to extract functional ROIs (1-based)",
     )
-    tau: int = Field(
-        default=1, description="this is the main parameter for deconvolution"
-    )
-    smooth_sigma_time: int = Field(default=0, description="gaussian smoothing in time")
-    smooth_sigma: float = Field(
-        default=1.5,
-        description="~1 good for 2P recordings, recommend 3-5 for 1P recordings",
-    )
     spatial_scale: int = Field(
         default=0,
         description="0: multi-scale; 1: 6 pixels, 2: 12 pixels, 3: 24 pixels, 4: 48 pixels",
-    )
-    nbinned: int = Field(
-        default=5000, description="max number of binned frames for cell detection"
     )
     threshold_scaling: int = Field(
         default=1,
@@ -103,16 +92,6 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     allow_overlap: bool = Field(
         default=False,
         description="pixels that are overlapping are thrown out (False) or added to both ROIs (True)",
-    )
-    baseline: str = Field(
-        default="maximin", description="baselining mode (can also choose 'prctile;)"
-    )
-    win_baseline: int = Field(default=60, desctiopion="window for maximum")
-    sig_baseline: int = Field(
-        default=10, description="smooth constant for gaussian filter"
-    )
-    prctile_baseline: int = Field(
-        default=8, description="percentile for baseline estimation"
     )
     denoise: bool = Field(
         default=False,
@@ -1427,19 +1406,11 @@ if __name__ == "__main__":
         suite2p_args["denoise"] = args.denoise
         suite2p_args["save_path0"] = str(tmp_dir)
         suite2p_args["function_channel"] = args.function_channel
-        suite2p_args["tau"] = args.tau
-        suite2p_args["smooth_sigma_time"] = args.smooth_sigma_time
-        suite2p_args["smooth_sigma"] = args.smooth_sigma
         suite2p_args["spatial_scale"] = args.spatial_scale
-        suite2p_args["nbinned"] = args.nbinned
         suite2p_args["threshold_scaling"] = args.threshold_scaling
         suite2p_args["max_overlap"] = args.max_overlap
         suite2p_args["soma_crop"] = args.soma_crop
         suite2p_args["allow_overlap"] = args.allow_overlap
-        suite2p_args["baseline"] = args.baseline
-        suite2p_args["win_baseline"] = args.win_baseline
-        suite2p_args["sig_baseline"] = args.sig_baseline
-        suite2p_args["prctile_baseline"] = args.prctile_baseline
         # Here we overwrite the parameters for suite2p that will not change in our
         # processing pipeline. These are parameters that are not exposed to
         # minimize code length. Those are not set to default.
