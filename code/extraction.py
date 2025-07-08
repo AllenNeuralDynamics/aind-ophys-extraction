@@ -1405,7 +1405,7 @@ if __name__ == "__main__":
         suite2p_args["pretrained_model"] = args.pretrained_model
         suite2p_args["denoise"] = args.denoise
         suite2p_args["save_path0"] = str(tmp_dir)
-        suite2p_args["function_chan"] = args.function_channel
+        suite2p_args["functional_chan"] = args.functional_channel
         suite2p_args["spatial_scale"] = args.spatial_scale
         suite2p_args["threshold_scaling"] = args.threshold_scaling
         suite2p_args["max_overlap"] = args.max_overlap
