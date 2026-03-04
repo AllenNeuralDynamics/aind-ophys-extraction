@@ -744,6 +744,31 @@ def get_contours(
     return coordinates
 
 
+def make_neuropil_mask_image(
+    neuropil_coords: np.ndarray, dims: tuple
+) -> np.ndarray:
+    """Create a labeled neuropil mask image from sparse neuropil coordinates.
+
+    Parameters
+    ----------
+    neuropil_coords : np.ndarray
+        Array of shape (3, N) containing [roi_idx, y, x] for each neuropil pixel.
+    dims : tuple
+        Dimensions of the image (height, width).
+
+    Returns
+    -------
+    np.ndarray
+        2D array of shape (height, width) with dtype uint16. Background pixels are 0;
+        neuropil pixels are labeled 1..N (1-indexed ROI index). When multiple ROIs
+        share a pixel, the highest-indexed ROI wins (last-write).
+    """
+    mask = np.zeros(dims, dtype=np.uint16)
+    roi_idx, ys, xs = neuropil_coords
+    mask[ys, xs] = roi_idx + 1  # 1-indexed; 0 = background
+    return mask
+
+
 def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> float:
     """Estimate Gaussian sigma for CaImAn based on cell diameter.
 
@@ -1148,6 +1173,44 @@ def save_summary_images_with_rois(
         bbox_inches="tight",
         pad_inches=0.02,
     )
+
+
+def save_neuropil_mask_image(
+    output_dir: Path,
+    unique_id: str,
+    neuropil_mask: np.ndarray,
+    background_img: np.ndarray,
+) -> None:
+    """Save a neuropil segmentation mask visualization as a PNG.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory where the image will be saved.
+    unique_id : str
+        Unique identifier for the output file name.
+    neuropil_mask : np.ndarray
+        2D labeled array (height x width), 0=background, 1..N=ROI neuropil regions.
+    background_img : np.ndarray
+        Grayscale background image to underlay the neuropil mask (e.g. mean image).
+    """
+    dims = background_img.shape
+    x_size = 6 * max(dims[1] / dims[0], 0.4)
+    fig, ax = plt.subplots(figsize=(x_size, 6))
+    vmin, vmax = np.nanpercentile(background_img, (1, 99))
+    ax.imshow(background_img, cmap="gray", vmin=vmin, vmax=vmax, interpolation=None)
+    if neuropil_mask.max() > 0:
+        masked = np.ma.masked_equal(neuropil_mask, 0)
+        ax.imshow(masked, cmap="tab20", alpha=0.5, interpolation="none")
+    ax.axis("off")
+    ax.set_title("neuropil mask", fontsize=min(24, 2.4 + 2 * x_size))
+    plt.tight_layout(pad=0.1)
+    plt.savefig(
+        output_dir / f"{unique_id}_neuropil_mask.png",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+    plt.close(fig)
 
 
 def contour_video(
@@ -1578,6 +1641,10 @@ if __name__ == "__main__":
             f.create_dataset(
                 "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
             )
+            neuropil_mask_img = make_neuropil_mask_image(neuropil_coords, tuple(dims))
+            f.create_dataset(
+                "rois/neuropil_mask_image", data=neuropil_mask_img, compression="gzip"
+            )
         # cellpose
         if cellpose_path:
             with np.load(cellpose_path) as cp:
@@ -1608,6 +1675,8 @@ if __name__ == "__main__":
     with h5py.File(str(motion_corrected_fn), "r") as f:
         corr_img = max_corr_image(f["data"])
     save_summary_images_with_rois(output_dir, unique_id, rois, iscell, ops, corr_img)
+    if len(neuropil_coords) > 0:
+        save_neuropil_mask_image(output_dir, unique_id, neuropil_mask_img, ops["meanImg"])
 
     # create a video overlaid wit ROI contours
     if args.contour_video:
