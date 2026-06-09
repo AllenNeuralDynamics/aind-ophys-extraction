@@ -1509,10 +1509,10 @@ if __name__ == "__main__":
             dropped = sorted(set(ops_dict) - set(applied))
             for k, v in applied.items():
                 suite2p_args[k] = copy.deepcopy(v)
-            logger.info(
+            logger.warning(
                 f"Loaded {len(applied)} Suite2p parameter(s) from "
-                f"'suite2p_ops' ({ops_path}); dropped {len(dropped)} "
-                f"reserved key(s): {dropped}"
+                f"'suite2p_ops' ({ops_path}). Applied: {sorted(applied)}. "
+                f"Dropped {len(dropped)} reserved key(s): {dropped}"
             )
 
         if args.suite2p_params:
