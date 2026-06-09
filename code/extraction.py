@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -244,6 +245,18 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
 
     verbose: bool = Field(
         default=False, description="Enable verbose logging and debug information."
+    )
+
+    # Suite2p parameter overrides
+    suite2p_params: str = Field(
+        default="",
+        description=(
+            "Serialized JSON string of Suite2p parameters to override defaults. "
+            "Only applied when running a Suite2p-based init mode "
+            "(max/mean, mean, enhanced_mean, max, sourcery, sparsery). "
+            "Values are deep-copied into the Suite2p ops, overwriting any "
+            "previously set parameters (including those exposed as settings)."
+        ),
     )
 
     # Config for pydantic-settings
@@ -1436,6 +1449,25 @@ if __name__ == "__main__":
             f"seconds, setting nbinned to "
             f"{suite2p_args['nbinned']}."
         )
+
+        if args.suite2p_params:
+            try:
+                user_suite2p_params = json.loads(args.suite2p_params)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Could not parse 'suite2p_params' as JSON: {e}"
+                ) from e
+            if not isinstance(user_suite2p_params, dict):
+                raise ValueError(
+                    "'suite2p_params' must be a JSON object mapping parameter "
+                    "names to values."
+                )
+            for k, v in user_suite2p_params.items():
+                suite2p_args[k] = copy.deepcopy(v)
+            logger.info(
+                f"Overriding {len(user_suite2p_params)} Suite2p parameter(s) "
+                f"from 'suite2p_params': {sorted(user_suite2p_params)}"
+            )
 
         logger.info(f"running Suite2P v{suite2p.version}")
         try:
