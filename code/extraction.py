@@ -255,7 +255,20 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "Only applied when running a Suite2p-based init mode "
             "(max/mean, mean, enhanced_mean, max, sourcery, sparsery). "
             "Values are deep-copied into the Suite2p ops, overwriting any "
-            "previously set parameters (including those exposed as settings)."
+            "previously set parameters (including those exposed as settings). "
+            "Applied AFTER --suite2p-ops, so it wins on key collisions."
+        ),
+    )
+    suite2p_ops: Optional[Path] = Field(
+        default=None,
+        description=(
+            "Path to a Suite2p ops.npy file to load parameters from. "
+            "Only applied when running a Suite2p-based init mode. "
+            "Pipeline-controlled keys (input/output paths, fs, nbinned, "
+            "do_registration, roidetect, spikedetect, neuropil_extract, "
+            "bin_duration, and any key already exposed as a CLI flag) are "
+            "stripped before merging; dropped keys are logged. Merged BEFORE "
+            "--suite2p-params so JSON overrides win."
         ),
     )
 
@@ -1449,6 +1462,58 @@ if __name__ == "__main__":
             f"seconds, setting nbinned to "
             f"{suite2p_args['nbinned']}."
         )
+
+        # Keys this script controls — must not be overridden by user-supplied ops.
+        # Includes pipeline-fixed plumbing (paths, fs, nbinned, ...) and every
+        # parameter already exposed as a CLI flag (so the CLI value wins).
+        reserved_suite2p_keys = {
+            "anatomical_only",
+            "allow_overlap",
+            "bin_duration",
+            "cellprob_threshold",
+            "data_path",
+            "denoise",
+            "diameter",
+            "do_registration",
+            "flow_threshold",
+            "fs",
+            "functional_chan",
+            "h5py",
+            "max_overlap",
+            "nbinned",
+            "neuropil_extract",
+            "pretrained_model",
+            "roidetect",
+            "save_path0",
+            "soma_crop",
+            "sparse_mode",
+            "spatial_hp_cp",
+            "spikedetect",
+            "threshold_scaling",
+        }
+
+        if args.suite2p_ops is not None:
+            ops_path = args.suite2p_ops
+            if not ops_path.is_file():
+                raise ValueError(f"'suite2p_ops' file not found: {ops_path}")
+            loaded = np.load(ops_path, allow_pickle=True)
+            # ops.npy is typically a 0-d object array wrapping a dict
+            ops_dict = loaded[()] if isinstance(loaded, np.ndarray) else loaded
+            if not isinstance(ops_dict, dict):
+                raise ValueError(
+                    f"'suite2p_ops' did not contain a dict (got {type(ops_dict).__name__})"
+                )
+            applied = {
+                k: v for k, v in ops_dict.items() if k not in reserved_suite2p_keys
+            }
+            dropped = sorted(set(ops_dict) - set(applied))
+            for k, v in applied.items():
+                suite2p_args[k] = copy.deepcopy(v)
+            logger.info(
+                f"Loaded {len(applied)} Suite2p parameter(s) from "
+                f"'suite2p_ops' ({ops_path}); dropped {len(dropped)} "
+                f"reserved key(s): {dropped}"
+            )
 
         if args.suite2p_params:
             try:
