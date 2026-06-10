@@ -254,8 +254,10 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "Serialized JSON string of Suite2p parameters to override defaults. "
             "Only applied when running a Suite2p-based init mode "
             "(max/mean, mean, enhanced_mean, max, sourcery, sparsery). "
-            "Values are deep-copied into the Suite2p ops, overwriting any "
-            "previously set parameters (including those exposed as settings). "
+            "Pipeline-controlled keys (input/output paths, fs, nbinned, "
+            "do_registration, roidetect, spikedetect, neuropil_extract, "
+            "bin_duration, and any key already exposed as a CLI flag) are "
+            "stripped before merging; dropped keys are logged. "
             "Applied AFTER --suite2p-ops, so it wins on key collisions."
         ),
     )
@@ -264,11 +266,9 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         description=(
             "Path to a Suite2p ops.npy file to load parameters from. "
             "Only applied when running a Suite2p-based init mode. "
-            "Pipeline-controlled keys (input/output paths, fs, nbinned, "
-            "do_registration, roidetect, spikedetect, neuropil_extract, "
-            "bin_duration, and any key already exposed as a CLI flag) are "
-            "stripped before merging; dropped keys are logged. Merged BEFORE "
-            "--suite2p-params so JSON overrides win."
+            "Pipeline-controlled keys (same set stripped from --suite2p-params) "
+            "are filtered before merging; dropped keys are logged. "
+            "Merged BEFORE --suite2p-params so JSON overrides win."
         ),
     )
 
@@ -1527,11 +1527,18 @@ if __name__ == "__main__":
                     "'suite2p_params' must be a JSON object mapping parameter "
                     "names to values."
                 )
-            for k, v in user_suite2p_params.items():
+            applied_params = {
+                k: v
+                for k, v in user_suite2p_params.items()
+                if k not in reserved_suite2p_keys
+            }
+            dropped_params = sorted(set(user_suite2p_params) - set(applied_params))
+            for k, v in applied_params.items():
                 suite2p_args[k] = copy.deepcopy(v)
-            logger.info(
-                f"Overriding {len(user_suite2p_params)} Suite2p parameter(s) "
-                f"from 'suite2p_params': {sorted(user_suite2p_params)}"
+            logger.warning(
+                f"Overriding {len(applied_params)} Suite2p parameter(s) from "
+                f"'suite2p_params': {sorted(applied_params)}. "
+                f"Dropped {len(dropped_params)} reserved key(s): {dropped_params}"
             )
 
         logger.info(f"running Suite2P v{suite2p.version}")
