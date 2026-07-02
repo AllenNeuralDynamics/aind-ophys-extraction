@@ -31,7 +31,7 @@ RUN pip3 install -U --no-cache-dir \
     sbxreader \
     scikit-image \
     sparse \
-    aind-ophys-utils \
+    git+https://github.com/AllenNeuralDynamics/aind-ophys-utils.git@843c94a#egg=aind-ophys-utils \
     git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output \
     aind-log-utils \
     aind-qcportal-schema
