@@ -31,6 +31,7 @@ __`rois`:__
 - __`shape`__: Shape of the ROI array, # neurons x height of FOV (in pixels) x width of FOV (in pixels)
 - `neuropil_coords`: Index locations of neuropil masks
 - `aspect_ratio`, `compact`, `footprint`, `med`, `mrs`, `mrs0`, `npix`, `npix_norm`, `npix_norm_no_crop`, `npix_soma`, `overlap`, `radius`, `solidity`, `soma_crop`: Additional ROI stats, see suite2p documentation
+- `cellpose_soma_probability`: Per-ROI aggregate of the Cellpose cell probability — the mean of the sigmoid-transformed `cellpose/cellprob` map over each ROI footprint (a probability in [0, 1], in the same ROI order as `data`/`coords`). Present only when Cellpose is used for initialization (`--init`).
 
 `cellpose`:
 - `masks`: Labeled image, where 0=no masks; 1,2,…=mask labels.
