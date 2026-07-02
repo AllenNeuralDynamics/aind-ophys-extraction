@@ -21,6 +21,7 @@ from aind_data_schema.core.processing import DataProcess, ProcessName
 from aind_data_schema.core.quality_control import QCMetric, QCStatus, Status
 from aind_log_utils.log import setup_logging
 from aind_ophys_utils.array_utils import downsample_array
+from aind_ophys_utils.segmentation_utils import roi_probabilities
 from aind_ophys_utils.summary_images import (max_corr_image, max_image,
                                              mean_image)
 from aind_qcportal_schema.metric_value import CheckboxMetric, CurationMetric
@@ -1687,6 +1688,21 @@ if __name__ == "__main__":
             with np.load(cellpose_path) as cp:
                 for k in cp.keys():
                     f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
+                # Aggregate the per-pixel cellpose probability map to a
+                # single probability per ROI (mean of sigmoid(cellprob)
+                # under each ROI footprint), aligned with rois/coords.
+                roi_masks = sparse.COO(coords, data, shape).todense()
+                roi_probs = roi_probabilities(roi_masks, cp["cellprob"])
+                dset = f.create_dataset(
+                    "rois/cellpose_soma_probability",
+                    data=roi_probs,
+                    dtype="f4",
+                )
+                dset.attrs["description"] = (
+                    "Mean of per-pixel sigmoid(cellpose cellprob) over "
+                    "each ROI footprint; probability in [0, 1], in "
+                    "suite2p ROI order (aligned with rois/coords)."
+                )
         else:
             logging.warning("No cellpose output found.")
 
