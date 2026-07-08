@@ -10,7 +10,7 @@ ENV VERSION="5.0"
 
 ARG GIT_ASKPASS
 ARG GIT_ACCESS_TOKEN
-COPY git-askpass /
+COPY git-ask-pass /
 
 RUN ["apt-get", "update"]
 RUN ["apt-get", "install", "-y", "vim"]
@@ -31,7 +31,7 @@ RUN pip3 install -U --no-cache-dir \
     sbxreader \
     scikit-image \
     sparse \
-    aind-ophys-utils \
+    git+https://github.com/AllenNeuralDynamics/aind-ophys-utils.git@v0.2.0#egg=aind-ophys-utils \
     git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output \
     aind-log-utils \
     aind-qcportal-schema
