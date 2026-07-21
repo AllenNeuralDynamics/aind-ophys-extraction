@@ -139,11 +139,11 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         ),
     )
     # CNMF parameters
-    K: int = Field(
-        default=5,
+    nr: int = Field(
+        default=30,
         description=(
-            "Maximum number of components to be found per patch when using greedy_roi "
-            "or corr_pnr initialization in CaImAn."
+            "Maximum number of components to be found when using greedy_roi or corr_pnr "
+            "(per patch or whole FOV depending on whether rf=None)."
         ),
     )
     nb: int = Field(
@@ -936,7 +936,7 @@ def build_CNMFParams(
         # For initial ROI detection (greedy_roi or corr_pnr)
         params_dict.update(
             {
-                "K": args.K,
+                "K": args.nr,
                 "method_init": args.init,
                 "rf": args.rf,
                 "stride": args.stride,
