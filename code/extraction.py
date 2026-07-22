@@ -261,9 +261,9 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             "Serialized JSON string of Suite2p parameters to override defaults. "
             "Only applied when running a Suite2p-based init mode "
             "(max/mean, mean, max, sourcery, sparsery). "
-            "Pipeline-controlled keys (input/output paths, fs, nbinned, "
-            "do_registration, roidetect, spikedetect, neuropil_extract, "
-            "bin_duration, and any key already exposed as a CLI flag) are "
+            "Pipeline-controlled keys (input/output paths, fs, nbins, bin_size, "
+            "do_registration, do_detection, do_deconvolution, neuropil_extract, "
+            "and any key already exposed as a CLI flag) are "
             "stripped before merging; dropped keys are logged. "
             "Applied AFTER --suite2p-ops, so it wins on key collisions."
         ),
@@ -1568,14 +1568,14 @@ if __name__ == "__main__":
         # downsampling across movies with different lengths and/or frame rates.
         bin_duration = 3.7
         bin_size = max(1, round(bin_duration * frame_rate))
-        nbinned = max(1, int(nframes / bin_size))
+        n_bins = max(1, int(nframes / bin_size))
         logger.info(
             f"Movie has {nframes} frames collected at "
             f"{frame_rate} Hz. "
             "To get a bin duration of "
             f"{bin_duration} "
             f"seconds, setting nbins to "
-            f"{nbinned}."
+            f"{n_bins}."
         )
         # "sourcery"/"sparsery" select suite2p's own functional detection;
         # any other init mode runs Cellpose, with "img" picking which image
@@ -1587,7 +1587,7 @@ if __name__ == "__main__":
                 else "cellpose",
                 "denoise": args.denoise,
                 "bin_size": bin_size,
-                "nbins": nbinned,
+                "nbins": n_bins,
                 "threshold_scaling": args.threshold_scaling,
                 "max_overlap": args.max_overlap,
                 "soma_crop": args.soma_crop,
