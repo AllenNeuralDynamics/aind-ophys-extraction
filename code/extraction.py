@@ -1249,7 +1249,7 @@ def save_summary_images_with_rois(
         bbox_inches="tight",
         pad_inches=0.02,
     )
-    plt.close(fig)
+    plt.close(fix)
 
 
 def contour_video(
@@ -1534,7 +1534,10 @@ if __name__ == "__main__":
         # Overwrite the parameters for suite2p that are exposed
         settings["fs"] = frame_rate
         diameter = args.diameter
-        if diameter == 0 and args.init == "sourcery":
+        if diameter == 0:
+            # Every Suite2p init mode below (cellpose-based or not) needs a
+            # real diameter: Suite2p no longer auto-estimates it internally,
+            # and passing diameter=[0, 0] causes a divide-by-zero downstream.
             with h5py.File(str(motion_corrected_fn), "r") as open_vid:
                 diameter = round(
                     estimate_diameter(
