@@ -1790,7 +1790,8 @@ if __name__ == "__main__":
             traces_roi, traces_neuropil, traces_corrected = [
                 np.empty((0, nframes), dtype=np.float32)
             ] * 3
-            r_values, data, coords, neuropil_coords, iscell = [[]] * 5
+            r_values, data, coords, neuropil_coords = [], [], [], []
+            iscell = np.empty((0, 2), dtype=np.float32)
             if args.neuropil == "mutualinfo":
                 raw_r = []
             keys = []
