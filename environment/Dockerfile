@@ -1,5 +1,5 @@
 # hash:sha256:3a00a2bc08e500660717fdfff02f6cee82dd45a3954fe3e321b9c9d11307981c
-ARG REGISTRY_HOST
+ARG REGISTRY_HOST=registry.codeocean.allenneuraldynamics.org
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
