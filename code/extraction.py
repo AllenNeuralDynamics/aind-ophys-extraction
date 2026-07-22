@@ -929,8 +929,12 @@ def get_FC_from_r(
     raw_r : np.ndarray
         1D array of r values that minimized the mutual information before thresholding.
     """
-    r_values = np.array([get_r_from_min_mi(raw_trace[i], neuropil_trace[i])[0]
-                         for i in range(raw_trace.shape[0])])
+    r_values = np.array(
+        [
+            get_r_from_min_mi(raw_trace[i], neuropil_trace[i])[0]
+            for i in range(raw_trace.shape[0])
+        ]
+    )
     mean_r = np.mean(r_values[r_values < 1])
     if np.sum(r_values < 1) < min_r_count:
         mean_r = 0.8
@@ -1578,7 +1582,9 @@ if __name__ == "__main__":
         # Cellpose segments (see suite2p.detection.anatomical.select_rois).
         settings["detection"].update(
             {
-                "algorithm": args.init if args.init in ("sourcery", "sparsery") else "cellpose",
+                "algorithm": args.init
+                if args.init in ("sourcery", "sparsery")
+                else "cellpose",
                 "denoise": args.denoise,
                 "bin_size": bin_size,
                 "nbins": nbinned,
@@ -1735,7 +1741,9 @@ if __name__ == "__main__":
                         *dims,
                         lam_percentile=settings["extraction"]["lam_percentile"],
                     ),
-                    inner_neuropil_radius=settings["extraction"]["inner_neuropil_radius"],
+                    inner_neuropil_radius=settings["extraction"][
+                        "inner_neuropil_radius"
+                    ],
                     min_neuropil_pixels=settings["extraction"]["min_neuropil_pixels"],
                     circular=settings["extraction"]["circular_neuropil"],
                 )
