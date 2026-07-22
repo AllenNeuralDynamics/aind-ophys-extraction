@@ -16,6 +16,7 @@ import numpy as np
 import skimage
 import sparse
 import suite2p
+import torch
 from aind_data_schema.core.processing import DataProcess, ProcessName
 from aind_data_schema.core.quality_control import QCMetric, QCStatus, Status
 from aind_log_utils.log import setup_logging
@@ -28,7 +29,6 @@ from aind_ophys_utils.summary_images import (
 )
 from aind_qcportal_schema.metric_value import CheckboxMetric
 from caiman.source_extraction.cnmf import cnmf, params
-from cellpose.models import Cellpose
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from scipy.sparse import coo_matrix, hstack, linalg
@@ -121,10 +121,10 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         ),
     )
     pretrained_model: str = Field(
-        default="cyto",
+        default="cpsam_v2",
         description=(
-            "CellPose pretrained model to use. Common options: 'cyto' (standard model), "
-            "'cyto2' (improved model), or path to a custom model file."
+            "CellPose pretrained model to use. Common options: 'cpsam_v2' or 'cpsam' "
+            "(Cellpose-SAM foundation models), or path to a custom model file."
         ),
     )
     # Neuropil parameters
@@ -769,7 +769,57 @@ def get_contours(
     return coordinates
 
 
-def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> float:
+def estimate_diameter(
+    img: np.ndarray,
+    pretrained_model: str,
+    cellprob_threshold: float = 0.0,
+    flow_threshold: float = 0.4,
+) -> float:
+    """Estimate cell diameter by running Cellpose detection and measuring its masks.
+
+    Cellpose-SAM (cellpose>=4.0.1) dropped the standalone SizeModel used by the
+    pre-4.0 ``Cellpose`` wrapper class, so there is no cheap way to estimate
+    diameter without running full detection. This reuses Suite2p's own
+    Cellpose call (``suite2p.detection.anatomical.roi_detect``) and takes the
+    median diameter it already computes from the detected masks.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Image to run Cellpose detection on (e.g. mean image).
+    pretrained_model : str
+        Name of the Cellpose pretrained model, or path to a custom model file.
+    cellprob_threshold : float
+        Cellpose cell probability threshold.
+    flow_threshold : float
+        Cellpose flow threshold.
+
+    Returns
+    -------
+    float
+        Median diameter (in pixels) across detected masks.
+    """
+    _, _, median_diam, _ = suite2p.detection.anatomical.roi_detect(
+        img,
+        settings={
+            "params": None,
+            "cellprob_threshold": cellprob_threshold,
+            "flow_threshold": flow_threshold,
+        },
+        pretrained_model=pretrained_model,
+        device=torch.device("cpu"),
+    )
+    return median_diam
+
+
+def estimate_gSig(
+    diameter: float,
+    img: np.ndarray,
+    pretrained_model: str,
+    cellprob_threshold: float = 0.0,
+    flow_threshold: float = 0.4,
+    fac: float = 2.35482,
+) -> float:
     """Estimate Gaussian sigma for CaImAn based on cell diameter.
 
     Parameters
@@ -778,6 +828,12 @@ def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> flo
         Cell diameter in pixels; if 0, it will be automatically estimated with Cellpose.
     img : np.ndarray
         Mean image used for automatic diameter estimation if needed.
+    pretrained_model : str
+        Cellpose pretrained model to use for automatic diameter estimation if needed.
+    cellprob_threshold : float
+        Cellpose cell probability threshold, used for automatic diameter estimation.
+    flow_threshold : float
+        Cellpose flow threshold, used for automatic diameter estimation.
     fac : float
         Factor by which to divide Cellpose's diameter estimate.
         Based on jGCaMP data, a value between 2 and 2.5 is a good choice.
@@ -789,7 +845,9 @@ def estimate_gSig(diameter: float, img: np.ndarray, fac: float = 2.35482) -> flo
         Estimated Gaussian sigma.
     """
     if diameter == 0:
-        diameter = Cellpose().sz.eval(img)[0]
+        diameter = estimate_diameter(
+            img, pretrained_model, cellprob_threshold, flow_threshold
+        )
         logger.info(
             f"'diameter' set to 0 — automatically estimated with Cellpose as {diameter:.3f}."
         )
@@ -907,7 +965,13 @@ def build_CNMFParams(
         Parameter dictionary for CaImAn
     """
     # Estimate Gaussian sigma based on cell diameter
-    gSig = estimate_gSig(args.diameter, ops["meanImg"])
+    gSig = estimate_gSig(
+        args.diameter,
+        ops["meanImg"],
+        args.pretrained_model,
+        args.cellprob_threshold,
+        args.flow_threshold,
+    )
 
     # Base parameters (common to both initialization methods)
     params_dict = {
@@ -1472,7 +1536,14 @@ if __name__ == "__main__":
         diameter = args.diameter
         if diameter == 0 and args.init == "sourcery":
             with h5py.File(str(motion_corrected_fn), "r") as open_vid:
-                diameter = round(Cellpose().sz.eval(mean_image(open_vid["data"]))[0])
+                diameter = round(
+                    estimate_diameter(
+                        mean_image(open_vid["data"]),
+                        args.pretrained_model,
+                        args.cellprob_threshold,
+                        args.flow_threshold,
+                    )
+                )
             logger.info(
                 "'diameter' set to 0 — automatically estimated with Cellpose "
                 f"as {diameter:.0f}."

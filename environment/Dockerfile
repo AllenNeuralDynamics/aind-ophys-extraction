@@ -24,7 +24,7 @@ RUN pip3 install -U --no-cache-dir \
 
 RUN pip3 install -U --no-cache-dir \
     aind-data-schema==1.1.0 \
-    cellpose==3.0 \
+    cellpose==4.2.1.1 \
     h5py \
     pydantic==2.8.2 \
     pydantic_settings \
