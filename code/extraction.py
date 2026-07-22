@@ -83,7 +83,9 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     )
     max_overlap: float = Field(
         default=0.75,
-        description="cells with more overlap than this get removed during triage, before refinement",
+        description=(
+            "cells with more overlap than this get removed during triage, before refinement"
+        ),
     )
     soma_crop: bool = Field(
         default=False,
@@ -91,13 +93,13 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     )
     allow_overlap: bool = Field(
         default=False,
-        description="pixels that are overlapping are thrown out (False) or added to both ROIs (True)",
+        description=(
+            "pixels that are overlapping are thrown out (False) or added to both ROIs (True)"
+        ),
     )
     denoise: bool = Field(
         default=False,
-        description=(
-            "If True, applies denoising to the binned movie before cell detection."
-        ),
+        description=("If True, applies denoising to the binned movie before cell detection."),
     )
     cellprob_threshold: float = Field(
         default=0.0,
@@ -154,9 +156,7 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     )
     nb: int = Field(
         default=2,
-        description=(
-            "Number of background components if using CaImAn with neuropil=cnmf."
-        ),
+        description=("Number of background components if using CaImAn with neuropil=cnmf."),
     )
     rf: int | None = Field(
         default=40,
@@ -189,8 +189,7 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     ssub_B: int = Field(
         default=2,
         description=(
-            "Additional spatial downsampling factor for background "
-            "during CNMF-E processing."
+            "Additional spatial downsampling factor for background during CNMF-E processing."
         ),
     )
     merge_thr: float = Field(
@@ -308,9 +307,7 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
             )
 
         if self.neuropil == "cnmf-e" and self.init == "greedy_roi":
-            raise ValueError(
-                "Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization"
-            )
+            raise ValueError("Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization")
 
         if self.init in ("greedy_roi", "corr_pnr") and self.neuropil[:4] != "cnmf":
             raise ValueError(
@@ -319,7 +316,7 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
 
         return None  # No warning message
 
-    def model_post_init(self, _) -> None:
+    def model_post_init(self, _: object) -> None:
         """Run validation after model initialization"""
         warning = self.validate_consistency()
         if warning:
@@ -477,12 +474,8 @@ def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> Non
     metric = QCMetric(
         name=f"{experiment_id} Detected ROIs",
         description="",
-        reference=str(
-            f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"
-        ),
-        status_history=[
-            QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)
-        ],
+        reference=str(f"{experiment_id}/extraction/{experiment_id}_detected_ROIs_withIDs.png"),
+        status_history=[QCStatus(evaluator="Automated", timestamp=dt.now(), status=Status.PASS)],
         value=CheckboxMetric(value=[], options=options, status=statuses),
     )
 
@@ -556,9 +549,7 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
     frame_locations = [epoch_locations[i] for i in valid_epoch_stems]
     frames_length = sum([(i[1] - i[0] + 1) for i in frame_locations])
 
-    return create_virtual_dataset(
-        motion_corr_fp, frame_locations, frames_length, temp_dir
-    )
+    return create_virtual_dataset(motion_corr_fp, frame_locations, frames_length, temp_dir)
 
 
 def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) -> str:
@@ -585,9 +576,7 @@ def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) ->
         data = fin["data"]
         end = min(start + chunksize, data.shape[0])
         # Define the virtual layout for this chunk
-        layout = h5py.VirtualLayout(
-            shape=(end - start, *data.shape[1:]), dtype=data.dtype
-        )
+        layout = h5py.VirtualLayout(shape=(end - start, *data.shape[1:]), dtype=data.dtype)
         vsource = h5py.VirtualSource(input_fn, "data", shape=data.shape)
         layout[:] = vsource[start:end]
         # Create a VDS file for this chunk
@@ -743,9 +732,7 @@ def get_contours(
             if thr_method != "max":
                 logging.warning("Unknown threshold method. Choosing max")
             Bvec = np.zeros(d)
-            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = (
-                patch_data / patch_data.max()
-            )
+            Bvec[A.indices[A.indptr[i] : A.indptr[i + 1]]] = patch_data / patch_data.max()
 
         Bmat = np.reshape(Bvec, dims, order="F")
         pars["coordinates"] = []
@@ -849,9 +836,7 @@ def estimate_gSig(
         Estimated Gaussian sigma.
     """
     if diameter == 0:
-        diameter = estimate_diameter(
-            img, pretrained_model, cellprob_threshold, flow_threshold
-        )
+        diameter = estimate_diameter(img, pretrained_model, cellprob_threshold, flow_threshold)
         logger.info(
             f"'diameter' set to 0 — automatically estimated with Cellpose as {diameter:.3f}."
         )
@@ -897,9 +882,7 @@ def get_r_from_min_mi(
     raw_trace[np.isnan(raw_trace)] = 0
     for r_i, r_temp in enumerate(r_iters):
         Fc = raw_trace - r_temp * neuropil_trace
-        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(
-            Fc, neuropil_trace
-        )
+        mi_iters[r_i] = skimage.metrics.normalized_mutual_information(Fc, neuropil_trace)
     min_ind = np.argmin(mi_iters)
     r_best = r_iters[min_ind]
     return r_best, mi_iters, r_iters
@@ -930,10 +913,7 @@ def get_FC_from_r(
         1D array of r values that minimized the mutual information before thresholding.
     """
     r_values = np.array(
-        [
-            get_r_from_min_mi(raw_trace[i], neuropil_trace[i])[0]
-            for i in range(raw_trace.shape[0])
-        ]
+        [get_r_from_min_mi(raw_trace[i], neuropil_trace[i])[0] for i in range(raw_trace.shape[0])]
     )
     mean_r = np.mean(r_values[r_values < 1])
     if np.sum(r_values < 1) < min_r_count:
@@ -1153,26 +1133,18 @@ def format_caiman_output(
                 Atb0 + AtW.dot(Yr) - AtW.dot(e.A).dot(e.C) - AtW.dot(e.b0)[:, None]
             ).astype("f4")
         else:
-            ds_mat = caiman.source_extraction.cnmf.utilities.decimation_matrix(
-                e.dims, ssub_B
-            )
+            ds_mat = caiman.source_extraction.cnmf.utilities.decimation_matrix(e.dims, ssub_B)
             Ads = ds_mat.dot(e.A)
             b0ds = ds_mat.dot(e.b0)
             AtW = Ads.T.dot(e.W)
             traces_neuropil = (
                 Atb0
                 + ssub_B**2
-                * (
-                    AtW.dot(ds_mat).dot(Yr)
-                    - AtW.dot(Ads).dot(e.C)
-                    - AtW.dot(b0ds)[:, None]
-                )
+                * (AtW.dot(ds_mat).dot(Yr) - AtW.dot(Ads).dot(e.C) - AtW.dot(b0ds)[:, None])
             ).astype("f4")
     else:
         traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
-        traces_corrected += (
-            0.8 * traces_neuropil
-        )  # TODO: check factor on groundtruth data
+        traces_corrected += 0.8 * traces_neuropil  # TODO: check factor on groundtruth data
     traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
     # convert ROIs to sparse COO 3D-tensor (https://sparse.pydata.org/en/stable/construct.html)
     data = []
@@ -1180,9 +1152,7 @@ def format_caiman_output(
     for i in range(e.A.shape[1]):
         roi = coo_matrix(e.A[:, i].reshape(e.dims, order="F").toarray(), dtype="f4")
         data.append(roi.data)
-        coords.append(
-            np.array([i * np.ones(len(roi.data)), roi.row, roi.col], dtype="i2")
-        )
+        coords.append(np.array([i * np.ones(len(roi.data)), roi.row, roi.col], dtype="i2"))
     if len(data):
         data = np.concatenate(data)
         coords = np.hstack(coords)
@@ -1190,9 +1160,7 @@ def format_caiman_output(
     iscell = np.zeros((e.A.shape[1], 2), dtype="f4")
     iscell[e.idx_components, 0] = 1
     iscell[:, 1] = (
-        e.cnn_preds
-        if (hasattr(e, "cnn_preds") and len(e.cnn_preds) == e.A.shape[1])
-        else np.nan
+        e.cnn_preds if (hasattr(e, "cnn_preds") and len(e.cnn_preds) == e.A.shape[1]) else np.nan
     )
     return traces_corrected, traces_neuropil, traces_roi, data, coords, iscell
 
@@ -1249,9 +1217,7 @@ def save_summary_images_with_rois(
     # Add IDs and save another version
     for i in (0, 1, 2):
         for k in range(rois.shape[0]):
-            ax[i].text(
-                *cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw
-            )
+            ax[i].text(*cm[k], str(k), color="orange" if iscell[k, 0] else "r", fontsize=8 * lw)
     plt.savefig(
         output_dir / f"{unique_id}_detected_ROIs_withIDs.png",
         bbox_inches="tight",
@@ -1270,9 +1236,7 @@ def contour_video(
     lower_quantile: float = 0.02,
     upper_quantile: float = 0.9975,
     only_raw: bool = False,
-    n_jobs: int | None = (
-        None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
-    ),
+    n_jobs: int | None = (None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)),
     bitrate: str = "0",
     crf: int = 20,
     cpu_used: int = 4,
@@ -1321,9 +1285,7 @@ def contour_video(
     for m in rois:
         if isinstance(m, sparse.COO):
             m = m.todense()
-        ret, thresh = cv2.threshold(
-            (m > m.max() / 10).astype(np.uint8), 0, 1, cv2.THRESH_BINARY
-        )
+        ret, thresh = cv2.threshold((m > m.max() / 10).astype(np.uint8), 0, 1, cv2.THRESH_BINARY)
         contours = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)[-2]
         for contour in contours:
             cv2.drawContours(img_contours, contour, -1, rgb, max(max(dims) // 200, 1))
@@ -1333,12 +1295,12 @@ def contour_video(
         mov[:: max(1, len(mov) // 100)], (lower_quantile, upper_quantile)
     )
 
-    def scale(m):
+    def scale(m: np.ndarray) -> np.ndarray:
         return np.array(
             ThreadPool(n_jobs).map(
-                lambda frame: np.clip(
-                    255 * (frame - minmov) / (maxmov - minmov), 0, 255
-                ).astype(np.uint8),
+                lambda frame: np.clip(255 * (frame - minmov) / (maxmov - minmov), 0, 255).astype(
+                    np.uint8
+                ),
                 m,
             )
         )
@@ -1346,9 +1308,7 @@ def contour_video(
     if only_raw:
         mov = scale(mov)
     else:
-        img_contours = np.repeat(img_contours[..., None], 3, 0).reshape(
-            dims[0], 3 * dims[1], -1
-        )
+        img_contours = np.repeat(img_contours[..., None], 3, 0).reshape(dims[0], 3 * dims[1], -1)
         reconstructed = np.tensordot(
             downsample_array(traces.T, downscale, 1, n_jobs=n_jobs).astype("f4"),
             rois,
@@ -1518,9 +1478,7 @@ if __name__ == "__main__":
             data,
             coords,
             iscell,
-        ) = run_caiman_extraction(
-            input_fn, unique_id, args, ops, Ain=None, n_jobs=n_jobs
-        )
+        ) = run_caiman_extraction(input_fn, unique_id, args, ops, Ain=None, n_jobs=n_jobs)
         neuropil_coords, keys = [], []
         input_args = vars(args)
 
@@ -1556,8 +1514,7 @@ if __name__ == "__main__":
                     )
                 )
             logger.info(
-                "'diameter' set to 0 — automatically estimated with Cellpose "
-                f"as {diameter:.0f}."
+                f"'diameter' set to 0 — automatically estimated with Cellpose as {diameter:.0f}."
             )
         settings["diameter"] = [diameter] * 2
         settings["run"]["do_registration"] = False
@@ -1582,9 +1539,7 @@ if __name__ == "__main__":
         # Cellpose segments (see suite2p.detection.anatomical.select_rois).
         settings["detection"].update(
             {
-                "algorithm": args.init
-                if args.init in ("sourcery", "sparsery")
-                else "cellpose",
+                "algorithm": args.init if args.init in ("sourcery", "sparsery") else "cellpose",
                 "denoise": args.denoise,
                 "bin_size": bin_size,
                 "nbins": n_bins,
@@ -1665,13 +1620,10 @@ if __name__ == "__main__":
             try:
                 user_suite2p_params = json.loads(args.suite2p_params)
             except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Could not parse 'suite2p_params' as JSON: {e}"
-                ) from e
+                raise ValueError(f"Could not parse 'suite2p_params' as JSON: {e}") from e
             if not isinstance(user_suite2p_params, dict):
                 raise ValueError(
-                    "'suite2p_params' must be a JSON object mapping parameter "
-                    "names to values."
+                    "'suite2p_params' must be a JSON object mapping parameter names to values."
                 )
             apply_suite2p_overrides(
                 settings, user_suite2p_params, reserved_suite2p_keys, "suite2p_params"
@@ -1717,9 +1669,7 @@ if __name__ == "__main__":
                     traces_corrected = traces_roi - neucoeff * traces_neuropil
                     r_values = neucoeff * np.ones(traces_roi.shape[0])
                 else:
-                    traces_corrected, r_values, raw_r = get_FC_from_r(
-                        traces_roi, traces_neuropil
-                    )
+                    traces_corrected, r_values, raw_r = get_FC_from_r(traces_roi, traces_neuropil)
                 # convert ROIs to sparse COO 3D-tensor
                 data = []
                 coords = []
@@ -1741,9 +1691,7 @@ if __name__ == "__main__":
                         *dims,
                         lam_percentile=settings["extraction"]["lam_percentile"],
                     ),
-                    inner_neuropil_radius=settings["extraction"][
-                        "inner_neuropil_radius"
-                    ],
+                    inner_neuropil_radius=settings["extraction"]["inner_neuropil_radius"],
                     min_neuropil_pixels=settings["extraction"]["min_neuropil_pixels"],
                     circular=settings["extraction"]["circular_neuropil"],
                 )
@@ -1795,9 +1743,7 @@ if __name__ == "__main__":
                     data,
                     coords,
                     iscell,
-                ) = run_caiman_extraction(
-                    input_fn, unique_id, args, ops, Ain=Ain, n_jobs=n_jobs
-                )
+                ) = run_caiman_extraction(input_fn, unique_id, args, ops, Ain=Ain, n_jobs=n_jobs)
                 neuropil_coords, keys = [], []
 
         else:  # no ROIs found
@@ -1838,9 +1784,7 @@ if __name__ == "__main__":
         shape = np.array([len(traces_roi), *dims], dtype=np.int16)
         f.create_dataset("rois/shape", data=shape)  # neurons x height x width
         if len(neuropil_coords) > 0:
-            f.create_dataset(
-                "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
-            )
+            f.create_dataset("rois/neuropil_coords", data=neuropil_coords, compression="gzip")
         # cellpose
         if cellpose_path:
             with np.load(cellpose_path) as cp:
