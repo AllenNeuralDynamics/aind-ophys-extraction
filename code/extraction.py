@@ -1529,7 +1529,7 @@ if __name__ == "__main__":
         # Set suite2p db (paths) and settings (everything else).
         db = suite2p.default_db()
         db["input_format"] = "h5"
-        db["data_path"] = [motion_corrected_fn.parent]
+        db["data_path"] = [str(motion_corrected_fn.parent)]
         db["file_list"] = [str(motion_corrected_fn)]
         db["save_path0"] = str(tmp_dir)
         db["functional_chan"] = args.functional_chan
@@ -1563,8 +1563,8 @@ if __name__ == "__main__":
         # for Suite2P ROI detection purposes. This allows consistent temporal
         # downsampling across movies with different lengths and/or frame rates.
         bin_duration = 3.7
-        bin_size = round(bin_duration * frame_rate)
-        nbinned = int(nframes / bin_size)
+        bin_size = max(1, round(bin_duration * frame_rate))
+        nbinned = max(1, int(nframes / bin_size))
         logger.info(
             f"Movie has {nframes} frames collected at "
             f"{frame_rate} Hz. "
@@ -1675,8 +1675,10 @@ if __name__ == "__main__":
         try:
             input_args = {**vars(args), **db, **settings}
             suite2p.run_s2p(db, settings)
-        except ValueError:  # raised when no ROIs found
-            pass
+        except ValueError as e:
+            if "no ROIs were found" not in str(e):
+                raise
+            logger.warning(f"Suite2p found no ROIs: {e}")
 
         # load in the rois from the stat file and movie path for shape
         with h5py.File(str(motion_corrected_fn), "r") as open_vid:
