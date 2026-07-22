@@ -16,4 +16,4 @@ RUN pip3 install -U --no-cache-dir \
     scikit-image \
     sparse \
     aind-ophys-utils \
-    git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output
+    git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output_v1.1.0
