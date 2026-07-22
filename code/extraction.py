@@ -123,8 +123,12 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     pretrained_model: str = Field(
         default="cpsam_v2",
         description=(
-            "CellPose pretrained model to use. Common options: 'cpsam_v2' or 'cpsam' "
-            "(Cellpose-SAM foundation models), or path to a custom model file."
+            "CellPose pretrained model to use. Built-in options: "
+            "'cpsam_v2' (Cellpose-SAM, includes a fix for low-contrast regions), "
+            "'cpsam' (original Cellpose-SAM model), "
+            "'cpdino' (Cellpose-DINO, DINOv3-ViTL backbone), "
+            "'cpdino-vitb' (Cellpose-DINO, smaller DINOv3-ViTB backbone); "
+            "or a path to a custom model file."
         ),
     )
     # Neuropil parameters
