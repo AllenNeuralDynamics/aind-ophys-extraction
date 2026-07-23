@@ -1,3 +1,5 @@
+"""Source extraction pipeline using Cellpose, Suite2p, and CaImAn."""
+
 import copy
 import json
 import logging
@@ -286,18 +288,19 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
     @field_validator("init", "neuropil")
     @classmethod
     def lowercase_str_fields(cls, v: str) -> str:
-        """Convert string fields to lowercase"""
+        """Convert string fields to lowercase."""
         return v.lower()
 
     @field_validator("rf")
     @classmethod
     def validate_rf(cls, v: int) -> int | None:
+        """Convert rf=0 to None, meaning process the entire FOV as a single patch."""
         if v == 0:
             return None
         return v
 
     def validate_consistency(self) -> str | None:
-        """Validate command line arguments for consistency"""
+        """Validate command line arguments for consistency."""
         if self.neuropil == "cnmf" and self.init == "corr_pnr":
             # We'll log a warning but still update the parameters
             self.ssub = 1
@@ -317,14 +320,14 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         return None  # No warning message
 
     def model_post_init(self, _: object) -> None:
-        """Run validation after model initialization"""
+        """Run validation after model initialization."""
         warning = self.validate_consistency()
         if warning:
             logging.warning(warning)
 
 
 def get_metadata(input_dir: Path) -> tuple[dict, dict, dict]:
-    """Get the session and data description metadata from the input directory
+    """Get the session and data description metadata from the input directory.
 
     Parameters
     ----------
@@ -354,8 +357,9 @@ def get_metadata(input_dir: Path) -> tuple[dict, dict, dict]:
 
 
 def get_frame_rate(session: dict) -> float:
-    """Attempt to pull frame rate from session.json
-    Returns none if frame rate not in session.json
+    """Attempt to pull frame rate from session.json.
+
+    Returns none if frame rate not in session.json.
 
     Parameters
     ----------
@@ -380,7 +384,7 @@ def get_frame_rate(session: dict) -> float:
 
 
 def make_output_directory(output_dir: Path, experiment_id: str) -> str:
-    """Creates the output directory if it does not exist
+    """Create the output directory if it does not exist.
 
     Parameters
     ----------
@@ -407,7 +411,7 @@ def write_data_process(
     start_time: dt,
     end_time: dt,
 ) -> None:
-    """Writes output metadata to plane data_process.json
+    """Write output metadata to plane data_process.json.
 
     Parameters
     ----------
@@ -447,7 +451,7 @@ def write_data_process(
 
 
 def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> None:
-    """Write the QC metrics to a json file
+    """Write the QC metrics to a json file.
 
     Parameters
     ----------
@@ -458,7 +462,6 @@ def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> Non
     num_rois: int
         number of ROIs detected in this plane
     """
-
     # Build options and statuses
     options = []
     statuses = []
@@ -487,7 +490,7 @@ def write_qc_metrics(output_dir: Path, experiment_id: str, num_rois: int) -> Non
 def create_virtual_dataset(
     h5_file: Path, frame_locations: list, frames_length: int, temp_dir: Path
 ) -> Path:
-    """Creates a virtual dataset from a list of frame locations
+    """Create a virtual dataset from a list of frame locations.
 
     Parameters
     ----------
@@ -522,7 +525,7 @@ def create_virtual_dataset(
 
 
 def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> Path:
-    """Creates a virtual dataset for Bergamo segmentation by filtering out photostimulation frames
+    """Create a virtual dataset for Bergamo segmentation by filtering out photostimulation frames.
 
     Parameters
     ----------
@@ -532,6 +535,7 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
         session information
     temp_dir: Path
         temporary directory for virtual dataset
+
     Returns
     -------
     h5_file: Path
@@ -653,7 +657,7 @@ def create_mmap_file(
 
 # ROI Analysis Functions
 def com(rois: np.ndarray | sparse.COO) -> np.ndarray:
-    """Calculation of the center of mass for spatial components
+    """Calculate the center of mass for spatial components.
 
     Parameters
     ----------
@@ -676,7 +680,7 @@ def com(rois: np.ndarray | sparse.COO) -> np.ndarray:
 def get_contours(
     rois: np.ndarray | sparse.COO, thr: float = 0.2, thr_method: str = "max"
 ) -> list[dict]:
-    """Gets contour of spatial components and returns their coordinates
+    """Get contour of spatial components and return their coordinates.
 
     Parameters
     ----------
@@ -694,7 +698,6 @@ def get_contours(
     coordinates : list
         list of coordinates with center of mass and contour plot coordinates for each component
     """
-
     nr, dims = rois.shape[0], rois.shape[1:]
     d1, d2 = dims[:2]
     d = np.prod(dims)
@@ -852,8 +855,7 @@ def get_r_from_min_mi(
     resolution: float = 0.01,
     r_test_range: list[float] = [0, 2],
 ) -> tuple[float, np.ndarray, np.ndarray]:
-    """Get the r value that minimizes the mutual information between
-    the corrected trace and the neuropil trace.
+    """Get the r value minimizing mutual information between the corrected and neuropil traces.
 
     Parameters
     ----------
@@ -1175,7 +1177,7 @@ def save_summary_images_with_rois(
     ops: dict,
     corr_img: np.ndarray,
 ) -> None:
-    """Save summary images with ROI contours
+    """Save summary images with ROI contours.
 
     Parameters
     ----------
@@ -1242,7 +1244,7 @@ def contour_video(
     crf: int = 20,
     cpu_used: int = 4,
 ) -> None:
-    """Create a video contours using vp9 codec via imageio-ffmpeg
+    """Create a video contours using vp9 codec via imageio-ffmpeg.
 
     Parameters
     ----------
