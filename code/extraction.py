@@ -1144,7 +1144,8 @@ def format_caiman_output(
             ).astype("f4")
     else:
         traces_neuropil = e.A.T.dot(e.b).dot(e.f).astype("f4")
-        traces_corrected += 0.8 * traces_neuropil  # TODO: check factor on groundtruth data
+        # CNMF's model already separates C from the shared background b*f,
+        # so no further neuropil correction is applied here.
     traces_roi = (e.C + e.YrA + traces_neuropil).astype("f4")
     # convert ROIs to sparse COO 3D-tensor (https://sparse.pydata.org/en/stable/construct.html)
     data = []
