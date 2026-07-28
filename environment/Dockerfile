@@ -1,4 +1,4 @@
-# hash:sha256:3b3684a6d0a8f18619ce8902567df7698c4a0fb60843bcbad67fe67b65e8d0fd
+# hash:sha256:31c982d0cb1be882272de0d02a3071b8278cfcaf084b05645d3bf9f7d2d74b21
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:23.1.0-4-python3.10.12-ubuntu22.04
 
@@ -26,5 +26,5 @@ RUN --mount=type=secret,id=git-access-token \
     scikit-image==0.24.0 \
     sparse==0.15.4 \
     torch==2.4.0 \
-    -e git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@3a2abda#egg=aind-ophys-extraction-library \
+    -e git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@da5580d#egg=aind-ophys-extraction-library \
     -e git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output#egg=suite2p
