@@ -1,0 +1,354 @@
+{
+	"version": 1,
+	"named_parameters": true,
+	"parameters": [
+		{
+			"id": "RcY5HhGmzwHsLjMq",
+			"name": "input_dir",
+			"param_name": "input_dir",
+			"description": "Directory containing the input data files.",
+			"help_text": "Directory containing the input data files.",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "../data"
+		},
+		{
+			"id": "gqAu9r1gXu5tbKNm",
+			"name": "output_dir",
+			"param_name": "output_dir",
+			"description": "Directory where output files will be saved.",
+			"help_text": "Directory where output files will be saved.",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "../results"
+		},
+		{
+			"id": "4e6mhIDy3UeZgAbg",
+			"name": "tmp_dir",
+			"param_name": "tmp_dir",
+			"description": "Directory for temporary files created during processing.",
+			"help_text": "Directory for temporary files created during processing.",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "/scratch"
+		},
+		{
+			"id": "LUBW2zCQtK6G1kYO",
+			"name": "frame_rate",
+			"param_name": "frame_rate",
+			"description": "Frame rate [Hz] fallback used only when it cannot be read from acquisition/session/platform metadata.",
+			"help_text": "Frame rate [Hz] fallback used only when it cannot be read from acquisition/session/platform metadata.",
+			"type": "text",
+			"value_type": "number"
+		},
+		{
+			"id": "9AoXIKUgZnymiiOF",
+			"name": "diameter",
+			"param_name": "diameter",
+			"description": "Expected diameter of cells in pixels. If set to 0, CellPose will estimate the diameter from the data.",
+			"help_text": "Expected diameter of cells in pixels. If set to 0, CellPose will estimate the diameter from the data.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "gJTDa9D5EMhHE0GF",
+			"name": "init",
+			"param_name": "init",
+			"description": "Initialization method for finding masks. Options: max/mean: Cellpose on max projection image divided by mean image; mean: Cellpose on mean image; enhanced_mean: Cellpose on enhanced mean image; max: Cellpose on maximum projection image; sourcery: Suite2p's functional mode without 'sparse_mode'; sparsery: Suite2p's functional mode with 'sparse_mode'; greedy_roi: CaImAn's functional 'greedy_roi' mode; corr_pnr: CaImAn's functional 'corr_pnr' mode.",
+			"help_text": "Initialization method for finding masks. Options: max/mean: Cellpose on max projection image divided by mean image; mean: Cellpose on mean image; enhanced_mean: Cellpose on enhanced mean image; max: Cellpose on maximum projection image; sourcery: Suite2p's functional mode without 'sparse_mode'; sparsery: Suite2p's functional mode with 'sparse_mode'; greedy_roi: CaImAn's functional 'greedy_roi' mode; corr_pnr: CaImAn's functional 'corr_pnr' mode.",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "mean"
+		},
+		{
+			"id": "xB5I3l4apfbDyChR",
+			"name": "functional_chan",
+			"param_name": "functional_chan",
+			"description": "this channel is used to extract functional ROIs (1-based)",
+			"help_text": "this channel is used to extract functional ROIs (1-based)",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "1"
+		},
+		{
+			"id": "TPq7iEsCzsVkDCtt",
+			"name": "threshold_scaling",
+			"param_name": "threshold_scaling",
+			"description": "adjust the automatically determined threshold by this scalar multiplier",
+			"help_text": "adjust the automatically determined threshold by this scalar multiplier",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "1"
+		},
+		{
+			"id": "RWcentR9WAgDeDGC",
+			"name": "max_overlap",
+			"param_name": "max_overlap",
+			"description": "cells with more overlap than this get removed during triage, before refinement",
+			"help_text": "cells with more overlap than this get removed during triage, before refinement",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "0.75"
+		},
+		{
+			"id": "Q9blBPrefikBs4D1",
+			"name": "soma_crop",
+			"param_name": "soma_crop",
+			"description": "crop dendrites for cell classification stats like compactness",
+			"help_text": "crop dendrites for cell classification stats like compactness",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "hmNE4RZeBP8Oja4y",
+			"name": "allow_overlap",
+			"param_name": "allow_overlap",
+			"description": "pixels that are overlapping are thrown out (False) or added to both ROIs (True)",
+			"help_text": "pixels that are overlapping are thrown out (False) or added to both ROIs (True)",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "NPs8O7cKILw9qnqG",
+			"name": "denoise",
+			"param_name": "denoise",
+			"description": "If True, applies denoising to the binned movie before cell detection.",
+			"help_text": "If True, applies denoising to the binned movie before cell detection.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "udbXrP2nemsHDWGi",
+			"name": "cellprob_threshold",
+			"param_name": "cellprob_threshold",
+			"description": "Probability threshold for CellPose cell detection. Decrease this threshold if CellPose is not returning enough ROIs.",
+			"help_text": "Probability threshold for CellPose cell detection. Decrease this threshold if CellPose is not returning enough ROIs.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "0.0"
+		},
+		{
+			"id": "uZGZqJ4TUV9tPVRH",
+			"name": "flow_threshold",
+			"param_name": "flow_threshold",
+			"description": "Flow threshold used by CellPose during cell detection. Increase this threshold if CellPose is not returning enough ROIs.",
+			"help_text": "Flow threshold used by CellPose during cell detection. Increase this threshold if CellPose is not returning enough ROIs.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "1.5"
+		},
+		{
+			"id": "sPGKB0E7d32ojcD2",
+			"name": "spatial_hp_cp",
+			"param_name": "spatial_hp_cp",
+			"description": "Window size for spatial high-pass filtering of the image before CellPose detection. Set to 0 to disable filtering.",
+			"help_text": "Window size for spatial high-pass filtering of the image before CellPose detection. Set to 0 to disable filtering.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "7hGL3gqTDSyRuvxl",
+			"name": "pretrained_model",
+			"param_name": "pretrained_model",
+			"description": "CellPose pretrained model to use. Common options: 'cyto' (standard model), 'cyto2' (improved model), or path to a custom model file.",
+			"help_text": "CellPose pretrained model to use. Common options: 'cyto' (standard model), 'cyto2' (improved model), or path to a custom model file.",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "cyto"
+		},
+		{
+			"id": "C31vUgOQQHCANc3x",
+			"name": "neuropil",
+			"param_name": "neuropil",
+			"description": "Method to estimate and subtract neuropil contamination, and whether to perform demixing. cnmf(-e) demix traces of overlapping ROIs via NMF, suite2p & mutualinfo do not. Options: 'cnmf' (CaImAn standard: low-rank background of CNMF), 'cnmf-e' (CaImAn for endoscopic data: ring model of CNMF-E ), 'suite2p' (fixed r=0.7), 'mutualinfo' (optimize r by minimizing mutual information).",
+			"help_text": "Method to estimate and subtract neuropil contamination, and whether to perform demixing. cnmf(-e) demix traces of overlapping ROIs via NMF, suite2p & mutualinfo do not. Options: 'cnmf' (CaImAn standard: low-rank background of CNMF), 'cnmf-e' (CaImAn for endoscopic data: ring model of CNMF-E ), 'suite2p' (fixed r=0.7), 'mutualinfo' (optimize r by minimizing mutual information).",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "mutualinfo"
+		},
+		{
+			"id": "fuBxDLUxcsqrfozc",
+			"name": "K",
+			"param_name": "K",
+			"description": "Maximum number of components to be found per patch when using greedy_roi or corr_pnr initialization in CaImAn.",
+			"help_text": "Maximum number of components to be found per patch when using greedy_roi or corr_pnr initialization in CaImAn.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "5"
+		},
+		{
+			"id": "kkEQTJgTMGf3cLBc",
+			"name": "nb",
+			"param_name": "nb",
+			"description": "Number of background components if using CaImAn with neuropil=cnmf.",
+			"help_text": "Number of background components if using CaImAn with neuropil=cnmf.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "2"
+		},
+		{
+			"id": "TRiNupIUI1crmjps",
+			"name": "rf",
+			"param_name": "rf",
+			"description": "Half-size of patches in pixels for CaImAn processing. If 0, the entire FOV is processed as a single patch. Larger patches are more memory-intensive.",
+			"help_text": "Half-size of patches in pixels for CaImAn processing. If 0, the entire FOV is processed as a single patch. Larger patches are more memory-intensive.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "40"
+		},
+		{
+			"id": "hL2CieSCtJzLowVY",
+			"name": "stride",
+			"param_name": "stride",
+			"description": "Overlap between neighboring patches in pixels for CaImAn processing. Should be smaller than rf.",
+			"help_text": "Overlap between neighboring patches in pixels for CaImAn processing. Should be smaller than rf.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "18"
+		},
+		{
+			"id": "gRpqiwD7JoJC4tdL",
+			"name": "tsub",
+			"param_name": "tsub",
+			"description": "Temporal downsampling factor during initialization phase in CaImAn. Higher values speed up processing but may miss transients.",
+			"help_text": "Temporal downsampling factor during initialization phase in CaImAn. Higher values speed up processing but may miss transients.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "2"
+		},
+		{
+			"id": "2YChmNeFiyHrFw89",
+			"name": "ssub",
+			"param_name": "ssub",
+			"description": "Spatial downsampling factor during initialization phase in CaImAn. Higher values speed up processing but may miss smaller cells.",
+			"help_text": "Spatial downsampling factor during initialization phase in CaImAn. Higher values speed up processing but may miss smaller cells.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "2"
+		},
+		{
+			"id": "CdHBbKoQtJpgYzAO",
+			"name": "ssub_B",
+			"param_name": "ssub_B",
+			"description": "Additional spatial downsampling factor for background during CNMF-E processing.",
+			"help_text": "Additional spatial downsampling factor for background during CNMF-E processing.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "2"
+		},
+		{
+			"id": "iSIojDlTMEfrWzCL",
+			"name": "merge_thr",
+			"param_name": "merge_thr",
+			"description": "Trace correlation threshold for merging components in CaImAn. Components with correlation above this value will be merged.",
+			"help_text": "Trace correlation threshold for merging components in CaImAn. Components with correlation above this value will be merged.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "0.8"
+		},
+		{
+			"id": "eKR9aVp128frpFkV",
+			"name": "min_corr",
+			"param_name": "min_corr",
+			"description": "Minimum local correlation for a component to be considered in corr_pnr initialization. Higher values result in fewer, more reliable components.",
+			"help_text": "Minimum local correlation for a component to be considered in corr_pnr initialization. Higher values result in fewer, more reliable components.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "0.6"
+		},
+		{
+			"id": "Hzq9DBZbiglBZbrN",
+			"name": "min_pnr",
+			"param_name": "min_pnr",
+			"description": "Minimum peak-to-noise ratio for a component to be considered in corr_pnr initialization. Higher values result in fewer, more reliable components.",
+			"help_text": "Minimum peak-to-noise ratio for a component to be considered in corr_pnr initialization. Higher values result in fewer, more reliable components.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "4"
+		},
+		{
+			"id": "YF7MvptlXeI7tbhe",
+			"name": "snr_thr",
+			"param_name": "snr_thr",
+			"description": "Signal-to-noise ratio threshold for component acceptance in CaImAn evaluation. Components below this value will be rejected.",
+			"help_text": "Signal-to-noise ratio threshold for component acceptance in CaImAn evaluation. Components below this value will be rejected.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "1.5"
+		},
+		{
+			"id": "dQX8fIDe9cf0ySFt",
+			"name": "rval_thr",
+			"param_name": "rval_thr",
+			"description": "Spatial correlation threshold for component acceptance in CaImAn evaluation. Components below this value will be rejected.",
+			"help_text": "Spatial correlation threshold for component acceptance in CaImAn evaluation. Components below this value will be rejected.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "0.6"
+		},
+		{
+			"id": "xvr8jh9Mdcx7lhOv",
+			"name": "cnn_thr",
+			"param_name": "cnn_thr",
+			"description": "CNN classifier threshold for component acceptance in CaImAn evaluation. Components below this value will be rejected. Set to 0 to disable CNN-based classification.",
+			"help_text": "CNN classifier threshold for component acceptance in CaImAn evaluation. Components below this value will be rejected. Set to 0 to disable CNN-based classification.",
+			"type": "text",
+			"value_type": "number",
+			"default_value": "0.9"
+		},
+		{
+			"id": "FwqTODgIOYKncMkr",
+			"name": "contour_video",
+			"param_name": "contour_video",
+			"description": "If True, creates a video overlaying raw data, ROI activity, and residual with contours for visualization and quality assessment.",
+			"help_text": "If True, creates a video overlaying raw data, ROI activity, and residual with contours for visualization and quality assessment.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "WKyubnIFZebUYFoQ",
+			"name": "verbose",
+			"param_name": "verbose",
+			"description": "Enable verbose logging and debug information.",
+			"help_text": "Enable verbose logging and debug information.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "M5llkOykTIeY7mqg",
+			"name": "verify",
+			"param_name": "verify",
+			"description": "Round-trip the emitted processing.json / quality_control.json through the core v2 schema objects after writing, so bad output fails in-capsule rather than downstream.",
+			"help_text": "Round-trip the emitted processing.json / quality_control.json through the core v2 schema objects after writing, so bad output fails in-capsule rather than downstream.",
+			"type": "text",
+			"value_type": "integer",
+			"default_value": "0"
+		},
+		{
+			"id": "kPFH5GAnIeMHBwMm",
+			"name": "suite2p_params",
+			"param_name": "suite2p_params",
+			"description": "Serialized JSON string of Suite2p parameters to override defaults. Only applied when running a Suite2p-based init mode (max/mean, mean, enhanced_mean, max, sourcery, sparsery). Pipeline-controlled keys (input/output paths, fs, nbinned, do_registration, roidetect, spikedetect, neuropil_extract, bin_duration, and any key already exposed as a CLI flag) are stripped before merging; dropped keys are logged. Applied AFTER --suite2p-ops, so it wins on key collisions.",
+			"help_text": "Serialized JSON string of Suite2p parameters to override defaults. Only applied when running a Suite2p-based init mode (max/mean, mean, enhanced_mean, max, sourcery, sparsery). Pipeline-controlled keys (input/output paths, fs, nbinned, do_registration, roidetect, spikedetect, neuropil_extract, bin_duration, and any key already exposed as a CLI flag) are stripped before merging; dropped keys are logged. Applied AFTER --suite2p-ops, so it wins on key collisions.",
+			"type": "text",
+			"value_type": "string",
+			"default_value": ""
+		},
+		{
+			"id": "uHjOQL8m6a19cSq2",
+			"name": "suite2p_ops",
+			"param_name": "suite2p_ops",
+			"description": "Path to a Suite2p ops.npy file to load parameters from. Only applied when running a Suite2p-based init mode. Pipeline-controlled keys (same set stripped from --suite2p-params) are filtered before merging; dropped keys are logged. Merged BEFORE --suite2p-params so JSON overrides win.",
+			"help_text": "Path to a Suite2p ops.npy file to load parameters from. Only applied when running a Suite2p-based init mode. Pipeline-controlled keys (same set stripped from --suite2p-params) are filtered before merging; dropped keys are logged. Merged BEFORE --suite2p-params so JSON overrides win.",
+			"type": "text",
+			"value_type": "string"
+		}
+	]
+}
