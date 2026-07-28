@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -ex
 
-# This is the master script for the capsule. When you click "Reproducible Run", the code in this file will execute.
-python -u extraction.py "$@"
+ls ../data
+
+pip list 2>&1 | tee -a /results/pip_list.log
+
+python -u extraction.py "$@" 2>&1 | tee -a /results/capsule_output.log
