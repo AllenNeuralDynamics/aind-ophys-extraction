@@ -1,6 +1,4 @@
-# hash:sha256:4bf2c6f19bdc43d3a84be1e8718a293abfbe18f34ed46fef82ed714f8d43c2ac
-FROM registry.codeocean.allenneuraldynamics.org/codeocean/mambaforge3:23.1.0-4-python3.10.12-ubuntu22.04
-
+FROM condaforge/miniforge3:latest
 ARG DEBIAN_FRONTEND=noninteractive
 
 ENV EXTRACTION_URL=https://github.com/AllenNeuralDynamics/aind-ophys-extraction
@@ -8,14 +6,8 @@ ENV PIPELINE_URL="https://codeocean.allenneuraldynamics.org/capsule/5619253/tree
 ENV PIPELINE_VERSION="1.0"
 ENV VERSION="5.0"
 
-ARG GIT_ASKPASS
-ARG GIT_ACCESS_TOKEN
-COPY git-askpass /
-
-RUN ["apt-get", "update"]
-RUN ["apt-get", "install", "-y", "vim"]
-
-RUN mamba install -y \
+RUN mamba install -y -c conda-forge \
+        python=3.10 \
         caiman \
     && mamba clean -ya
 
@@ -37,3 +29,6 @@ RUN pip3 install -U --no-cache-dir \
     aind-qcportal-schema
 
 RUN caimanmanager install
+RUN mkdir -p /data /results /scratch /capsule/code
+
+COPY code/ /capsule/code/
