@@ -34,7 +34,7 @@
 					"version": "3.0.10"
 				},
 				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@edfab4f#egg=aind-ophys-extraction-library"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@fd29145#egg=aind-ophys-extraction-library"
 				},
 				{
 					"name": "git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output#egg=suite2p"
