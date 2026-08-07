@@ -18,54 +18,7 @@
 		"pip3": {
 			"packages": [
 				{
-					"name": "aind-data-schema",
-					"version": "2.9.0"
-				},
-				{
-					"name": "aind-ophys-utils",
-					"version": "0.2.0"
-				},
-				{
-					"name": "aind-qcportal-schema",
-					"version": "0.6.4"
-				},
-				{
-					"name": "cellpose",
-					"version": "3.0.10"
-				},
-				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@57b97b0#egg=aind-ophys-extraction-library"
-				},
-				{
-					"name": "git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output#egg=suite2p"
-				},
-				{
-					"name": "h5py",
-					"version": "3.11.0"
-				},
-				{
-					"name": "pydantic",
-					"version": "2.8.2"
-				},
-				{
-					"name": "pydantic-settings",
-					"version": "2.14.2"
-				},
-				{
-					"name": "sbxreader",
-					"version": "0.2.3"
-				},
-				{
-					"name": "scikit-image",
-					"version": "0.24.0"
-				},
-				{
-					"name": "sparse",
-					"version": "0.15.4"
-				},
-				{
-					"name": "torch",
-					"version": "2.4.0"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@6dc3b7f#egg=aind-ophys-extraction-library"
 				}
 			],
 			"options": {},
