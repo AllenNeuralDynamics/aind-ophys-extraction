@@ -322,16 +322,6 @@
 			"default_value": "0"
 		},
 		{
-			"id": "M5llkOykTIeY7mqg",
-			"name": "verify",
-			"param_name": "verify",
-			"description": "Round-trip the emitted processing.json / quality_control.json through the core v2 schema objects after writing, so bad output fails in-capsule rather than downstream.",
-			"help_text": "Round-trip the emitted processing.json / quality_control.json through the core v2 schema objects after writing, so bad output fails in-capsule rather than downstream.",
-			"type": "text",
-			"value_type": "integer",
-			"default_value": "0"
-		},
-		{
 			"id": "kPFH5GAnIeMHBwMm",
 			"name": "suite2p_params",
 			"param_name": "suite2p_params",
