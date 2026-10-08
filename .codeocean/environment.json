@@ -18,7 +18,7 @@
 		"pip3": {
 			"packages": [
 				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@d5b8b8c#egg=aind-ophys-extraction-library"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@5cf411b#egg=aind-ophys-extraction-library"
 				}
 			],
 			"options": {},
