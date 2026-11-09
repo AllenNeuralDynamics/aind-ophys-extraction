@@ -1,4 +1,4 @@
-# hash:sha256:8b62e5166afc76765a73f48d6e93943a6274973891de9129e265f181f84b3d96
+# hash:sha256:649aa40b5b8fe011939369eb45e09d30a6bed17592239e8ff28807b2fb2a6841
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:23.1.0-4-python3.10.12-ubuntu22.04
 
@@ -15,4 +15,4 @@ RUN mamba install -y \
 RUN --mount=type=secret,id=git-access-token \
     GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
     pip3 install -U --no-cache-dir \
-    -e git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@v0.1.0#egg=aind-ophys-extraction-library
+    -e git+https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library.git@643e296#egg=aind-ophys-extraction-library
